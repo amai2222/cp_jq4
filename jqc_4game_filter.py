@@ -27,84 +27,84 @@ class JQC4GameFilter:
     def _setup_styles(self):
         """设置界面样式"""
         self.style = ttk.Style()
-        # 使用更现代的主题
-        self.style.theme_use('vista')
+        # 使用高对比度主题
+        self.style.theme_use('clam')
         
-        # 配置颜色主题
+        # 配置终极高对比度颜色主题
         self.colors = {
-            'primary': '#007BFF',      # 主色调 - 蓝色
-            'secondary': '#6C757D',    # 次要色 - 灰色
-            'success': '#28A745',      # 成功色 - 绿色
-            'danger': '#DC3545',       # 危险色 - 红色
-            'warning': '#FFC107',      # 警告色 - 黄色
-            'light': '#FFFFFF',        # 浅色背景
-            'dark': '#212529',         # 深色文字
-            'border': '#DEE2E6'        # 边框色
+            'primary': '#FF0000',      # 主色调 - 纯红色
+            'secondary': '#00FF00',    # 次要色 - 纯绿色
+            'success': '#0000FF',      # 成功色 - 纯蓝色
+            'danger': '#FFFF00',       # 危险色 - 纯黄色
+            'warning': '#FF00FF',      # 警告色 - 纯紫色
+            'light': '#FFFFFF',        # 纯白背景
+            'dark': '#000000',         # 纯黑文字
+            'border': '#808080'        # 灰色边框
         }
         
         # 标题样式
         self.style.configure('Title.TLabel',
-                           font=('Microsoft YaHei UI', 18, 'bold'),
-                           foreground='#1E90FF',  # 深蓝色
+                           font=('Microsoft YaHei UI', 24, 'bold'),
+                           foreground='#FF0000',  # 纯红色
                            background=self.colors['light'])
         
         # 头部标签样式
         self.style.configure('Header.TLabel',
-                           font=('Microsoft YaHei UI', 13, 'bold'),
-                           foreground='#4169E1',  # 皇家蓝
+                           font=('Microsoft YaHei UI', 16, 'bold'),
+                           foreground='#00FF00',  # 纯绿色
                            background=self.colors['light'])
         
         # 说明文字样式
-        self.style.configure('Info.TLabel', 
-                           font=('Microsoft YaHei UI', 9),
-                           foreground='#6C757D',
+        self.style.configure('Info.TLabel',
+                           font=('Microsoft YaHei UI', 10, 'bold'),
+                           foreground='#FF00FF',  # 纯紫色
                            background=self.colors['light'])
         
         # 按钮样式
         self.style.configure('Primary.TButton',
-                           font=('Microsoft YaHei UI', 12, 'bold'),
+                           font=('Microsoft YaHei UI', 15, 'bold'),
                            foreground='white',
-                           background='#1E90FF',  # 深蓝色
-                           borderwidth=2,
+                           background='#FF0000',  # 纯红色
+                           borderwidth=5,
                            relief='raised',
                            focuscolor='none')
         
         self.style.configure('Secondary.TButton',
-                           font=('Microsoft YaHei UI', 11),
+                           font=('Microsoft YaHei UI', 14),
                            foreground='white',
-                           background='#4169E1',  # 皇家蓝
-                           borderwidth=2,
+                           background='#00FF00',  # 纯绿色
+                           borderwidth=5,
                            relief='raised',
                            focuscolor='none')
         
         self.style.configure('Success.TButton',
-                           font=('Microsoft YaHei UI', 11),
+                           font=('Microsoft YaHei UI', 14),
                            foreground='white',
-                           background='#00BFFF',  # 深天蓝色
-                           borderwidth=2,
+                           background='#0000FF',  # 纯蓝色
+                           borderwidth=5,
                            relief='raised',
                            focuscolor='none')
         
         self.style.configure('Danger.TButton',
-                           font=('Microsoft YaHei UI', 11),
-                           foreground='white',
-                           background='#0066CC',  # 深蓝色
-                           borderwidth=2,
+                           font=('Microsoft YaHei UI', 14),
+                           foreground='black',
+                           background='#FFFF00',  # 纯黄色
+                           borderwidth=5,
                            relief='raised',
                            focuscolor='none')
         
-        # 按钮悬停效果 - 更明显的视觉反馈
+        # 按钮悬停效果 - 终极高对比度配色
         self.style.map('Primary.TButton',
-                      background=[('active', '#004499')],
+                      background=[('active', '#CC0000')],
                       relief=[('pressed', 'sunken'), ('active', 'raised')])
         self.style.map('Secondary.TButton',
-                      background=[('active', '#004499')],
+                      background=[('active', '#00CC00')],
                       relief=[('pressed', 'sunken'), ('active', 'raised')])
         self.style.map('Success.TButton',
-                      background=[('active', '#004499')],
+                      background=[('active', '#0000CC')],
                       relief=[('pressed', 'sunken'), ('active', 'raised')])
         self.style.map('Danger.TButton',
-                      background=[('active', '#004499')],
+                      background=[('active', '#CCCC00')],
                       relief=[('pressed', 'sunken'), ('active', 'raised')])
         
         # 框架样式
@@ -120,8 +120,8 @@ class JQC4GameFilter:
                            borderwidth=1)
         
         self.style.configure('Card.TLabelframe.Label',
-                           font=('Microsoft YaHei UI', 12, 'bold'),
-                           foreground='#4169E1',  # 皇家蓝
+                           font=('Microsoft YaHei UI', 15, 'bold'),
+                           foreground='#0000FF',  # 纯蓝色
                            background=self.colors['light'])
         
         # 输入框样式
