@@ -6,12 +6,15 @@
 import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 import re
+import requests
+import json
+from datetime import datetime
 
 class JQC4GameFilter:
     def __init__(self, root):
         self.root = root
         self.root.title("4场进球玩法过滤器")
-        self.root.geometry("1400x900")
+        self.root.geometry("1800x900")
         self.root.resizable(True, True)
         self.root.configure(bg='#F0F0F0')
         
@@ -21,8 +24,17 @@ class JQC4GameFilter:
         self.filtered_data = []  # 过滤后数据
         self.history = []  # 操作历史记录
         
+        # 期号和对阵数据
+        self.current_period = ""  # 当前期号
+        self.match_data = []      # 对阵数据
+        self.betting_selections = {}  # 投注选择
+        self.match_labels = {}    # 表格标签引用
+        
         self._create_widgets()
         self._setup_styles()
+        
+        # 初始化时自动获取最新期号
+        self.root.after(1000, self.auto_refresh_period_and_details)
     
     def _setup_styles(self):
         """设置界面样式"""
@@ -109,11 +121,19 @@ class JQC4GameFilter:
         title_label = ttk.Label(main_frame, text="4场进球玩法过滤器", style='Title.TLabel')
         title_label.pack(pady=(0, 20))
         
-        # 左右分栏
+        # 三栏布局
         content_frame = ttk.Frame(main_frame)
         content_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 左侧：投注数据输入区
+        # 最左侧：期号获取和对阵选择区
+        data_frame = ttk.LabelFrame(content_frame, text="期号获取与投注选择", padding="10")
+        data_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 10))
+        data_frame.configure(width=400)
+        
+        # 创建期号获取和对阵选择界面
+        self._create_data_acquisition_ui(data_frame)
+        
+        # 中间：投注数据输入区
         left_frame = ttk.LabelFrame(content_frame, text="投注数据输入", padding="10")
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
         
@@ -165,6 +185,127 @@ class JQC4GameFilter:
         
         # 创建过滤器界面
         self._create_filter_controls(right_frame)
+    
+    def _create_data_acquisition_ui(self, parent):
+        """创建期号获取和对阵选择界面"""
+        # ①数据获取区域
+        data_acq_frame = ttk.LabelFrame(parent, text="①数据获取", padding="10")
+        data_acq_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        # 期号输入和按钮
+        period_frame = ttk.Frame(data_acq_frame)
+        period_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        ttk.Label(period_frame, text="期号:", width=6).pack(side=tk.LEFT)
+        self.period_var = tk.StringVar(value="")
+        self.period_combo = ttk.Combobox(period_frame, textvariable=self.period_var, width=10, state="normal")
+        self.period_combo.pack(side=tk.LEFT, padx=(5, 10))
+        
+        # 绑定期号变化事件，自动获取详情
+        self.period_var.trace('w', self.on_period_changed)
+        
+        ttk.Button(period_frame, text="刷新期号", command=self.refresh_period, 
+                  style='Secondary.TButton').pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(period_frame, text="获取详情", command=self.get_match_details, 
+                  style='Success.TButton').pack(side=tk.LEFT)
+        
+        # 详情显示区域
+        self.details_text = scrolledtext.ScrolledText(data_acq_frame, height=8, width=45,
+                                                    font=('Microsoft YaHei UI', 9),
+                                                    bg='white', fg='black',
+                                                    relief='flat', bd=1)
+        self.details_text.pack(fill=tk.BOTH, expand=True)
+        
+        # ②投注选择区域
+        betting_frame = ttk.LabelFrame(parent, text="②投注选择", padding="10")
+        betting_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
+        
+        # 创建对阵表格
+        self._create_match_table(betting_frame)
+        
+        # 投注按钮
+        btn_frame = ttk.Frame(betting_frame)
+        btn_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Button(btn_frame, text="生成投注", command=self.generate_bets, 
+                  style='Primary.TButton').pack(side=tk.RIGHT)
+    
+    def _create_match_table(self, parent):
+        """创建对阵表格"""
+        # 创建表格框架
+        table_frame = ttk.Frame(parent)
+        table_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 表头
+        headers = ["场次", "联赛", "开赛日期", "主队 VS 客队", "主/客", "0球", "1球", "2球", "3+球"]
+        
+        # 创建表头
+        for i, header in enumerate(headers):
+            label = ttk.Label(table_frame, text=header, font=('Microsoft YaHei UI', 9, 'bold'))
+            label.grid(row=0, column=i, padx=1, pady=1, sticky="ew")
+        
+        # 配置列权重
+        for i in range(len(headers)):
+            table_frame.columnconfigure(i, weight=1)
+        
+        # 创建4场比赛的行
+        self.match_vars = {}
+        for game_idx in range(4):
+            row_start = game_idx * 2 + 1
+            
+            # 主队行
+            self._create_match_row(table_frame, game_idx, row_start, "主")
+            # 客队行
+            self._create_match_row(table_frame, game_idx, row_start + 1, "客")
+    
+    def _create_match_row(self, parent, game_idx, row, team_type):
+        """创建比赛行"""
+        # 场次
+        if team_type == "主":
+            match_num_label = ttk.Label(parent, text=f"{game_idx + 1}", font=('Microsoft YaHei UI', 9))
+            match_num_label.grid(row=row, column=0, padx=1, pady=1, sticky="ew")
+            # 联赛
+            league_label = ttk.Label(parent, text="德甲", font=('Microsoft YaHei UI', 9))
+            league_label.grid(row=row, column=1, padx=1, pady=1, sticky="ew")
+            # 开赛日期
+            date_label = ttk.Label(parent, text="2025-09-27", font=('Microsoft YaHei UI', 9))
+            date_label.grid(row=row, column=2, padx=1, pady=1, sticky="ew")
+            # 主队 VS 客队
+            teams_label = ttk.Label(parent, text="拜仁 VS 不来梅", font=('Microsoft YaHei UI', 9))
+            teams_label.grid(row=row, column=3, padx=1, pady=1, sticky="ew")
+            
+            # 保存标签引用以便后续更新
+            if game_idx not in self.match_labels:
+                self.match_labels[game_idx] = {}
+            self.match_labels[game_idx] = {
+                'match_num': match_num_label,
+                'league': league_label,
+                'date': date_label,
+                'teams': teams_label
+            }
+        else:
+            # 客队行，前几列留空
+            for col in range(4):
+                ttk.Label(parent, text="").grid(row=row, column=col, padx=1, pady=1)
+        
+        # 主/客
+        ttk.Label(parent, text=team_type, font=('Microsoft YaHei UI', 9)).grid(
+            row=row, column=4, padx=1, pady=1, sticky="ew")
+        
+        # 进球数选择（0球, 1球, 2球, 3+球）
+        goal_vars = {}
+        for goal_idx, goal_text in enumerate(["0", "1", "2", "3+"]):
+            var = tk.BooleanVar()
+            goal_vars[goal_text] = var
+            
+            cb = tk.Checkbutton(parent, text=goal_text, variable=var, 
+                               font=('Microsoft YaHei UI', 8))
+            cb.grid(row=row, column=5 + goal_idx, padx=1, pady=1, sticky="ew")
+        
+        # 保存变量引用
+        if game_idx not in self.match_vars:
+            self.match_vars[game_idx] = {}
+        self.match_vars[game_idx][team_type] = goal_vars
     
     def _create_filter_controls(self, parent):
         """创建过滤器控制界面"""
@@ -308,9 +449,19 @@ class JQC4GameFilter:
             messagebox.showerror("错误", f"加载数据失败：{e}")
     
     def clear_input(self):
-        """清空输入"""
+        """清空输入和投注区"""
+        # 清空粘贴区
         self.input_text.delete("1.0", tk.END)
         self.original_data = []
+        
+        # 清空投注区
+        self.betting_text.delete("1.0", tk.END)
+        self.betting_data = []
+        self.filtered_data = []
+        
+        # 更新统计显示
+        self.stats_label.config(text="数据统计：0 条")
+        self.betting_stats.config(text="投注数据：0 条")
     
     def clear_betting_area(self):
         """清空投注区"""
@@ -369,7 +520,7 @@ class JQC4GameFilter:
                 # 检查结果是否在选中的选项中
                 if not self.wdl_vars[i][result].get():
                     return False
-
+        
         # 检查大小球过滤
         for i in range(4):
             ou_condition = self.ou_vars[i].get()
@@ -1507,6 +1658,291 @@ class JQC4GameFilter:
             "uniform": "均匀选择(保持频率分布)"
         }
         return method_names.get(method, "未知方法")
+    
+    def auto_refresh_period_and_details(self):
+        """自动刷新期号并获取详情"""
+        try:
+            # 调用体彩API获取最新5期期号
+            url = "https://webapi.sporttery.cn/gateway/lottery/getFootBallMatchV1.qry"
+            params = {
+                'param': '94,0',
+                'lotteryDrawNum': '',
+                'sellStatus': '0',
+                'termLimits': '5'
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if 'value' in data and 'jqclist' in data['value']:
+                    # 获取最新5期期号
+                    periods = []
+                    for item in data['value']['jqclist']:
+                        if isinstance(item, str) and item:
+                            periods.append(item)
+                    
+                    if periods:
+                        # 更新下拉框选项
+                        self.period_combo['values'] = periods
+                        # 设置最新期号为当前值
+                        self.period_var.set(periods[0])
+                        self.current_period = periods[0]
+                        
+                        # 自动获取详情
+                        self.get_match_details()
+                    else:
+                        messagebox.showwarning("警告", "未找到期号数据")
+                else:
+                    messagebox.showwarning("警告", "API返回数据格式异常")
+            else:
+                messagebox.showerror("错误", f"API请求失败，状态码：{response.status_code}")
+                
+        except Exception as e:
+            messagebox.showerror("错误", f"自动刷新失败：{e}")
+    
+    def on_period_changed(self, *args):
+        """期号变化时的回调函数"""
+        # 延迟执行，避免频繁调用
+        if hasattr(self, '_period_change_timer'):
+            self.root.after_cancel(self._period_change_timer)
+        
+        self._period_change_timer = self.root.after(500, self.get_match_details)
+    
+    def refresh_period(self):
+        """刷新期号"""
+        try:
+            # 调用体彩API获取最新5期期号
+            url = "https://webapi.sporttery.cn/gateway/lottery/getFootBallMatchV1.qry"
+            params = {
+                'param': '94,0',
+                'lotteryDrawNum': '',
+                'sellStatus': '0',
+                'termLimits': '5'
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if 'value' in data and 'jqclist' in data['value']:
+                    # 获取最新5期期号
+                    periods = []
+                    for item in data['value']['jqclist']:
+                        if isinstance(item, str) and item:
+                            periods.append(item)
+                    
+                    if periods:
+                        # 更新下拉框选项
+                        self.period_combo['values'] = periods
+                        # 设置最新期号为当前值
+                        self.period_var.set(periods[0])
+                        self.current_period = periods[0]
+                        messagebox.showinfo("成功", f"已获取最新5期期号：{', '.join(periods)}")
+                    else:
+                        messagebox.showwarning("警告", "未找到期号数据")
+                else:
+                    messagebox.showwarning("警告", "API返回数据格式异常")
+            else:
+                messagebox.showerror("错误", f"API请求失败，状态码：{response.status_code}")
+                
+        except requests.exceptions.RequestException as e:
+            messagebox.showerror("错误", f"网络请求失败：{e}")
+        except Exception as e:
+            messagebox.showerror("错误", f"刷新期号失败：{e}")
+    
+    def get_match_details(self):
+        """获取对阵详情"""
+        try:
+            period = self.period_var.get().strip()
+            if not period:
+                messagebox.showwarning("警告", "请输入期号")
+                return
+            
+            # 调用体彩API获取对阵信息
+            url = "https://webapi.sporttery.cn/gateway/lottery/getFootBallMatchV1.qry"
+            params = {
+                'param': '94,0',
+                'lotteryDrawNum': period,
+                'sellStatus': '0',
+                'termLimits': '1'
+            }
+            
+            response = requests.get(url, params=params, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                if 'value' in data and 'jqcMatch' in data['value']:
+                    match_info = data['value']['jqcMatch']
+                    self._display_match_details(match_info)
+                else:
+                    messagebox.showwarning("警告", "未找到该期号的对阵信息")
+            else:
+                messagebox.showerror("错误", f"API请求失败，状态码：{response.status_code}")
+                
+        except requests.exceptions.RequestException as e:
+            messagebox.showerror("错误", f"网络请求失败：{e}")
+        except Exception as e:
+            messagebox.showerror("错误", f"获取详情失败：{e}")
+    
+    def _display_match_details(self, match_info):
+        """显示对阵详情"""
+        try:
+            self.details_text.delete("1.0", tk.END)
+            
+            # 显示基本信息
+            period = match_info.get('lotteryDrawNum', '未知')
+            sell_end_time = match_info.get('sellEndTime', '未知')
+            
+            details = f"第{period}期尚未开奖\n"
+            details += f"销售截止: {sell_end_time}\n"
+            details += f"对阵信息:\n"
+            
+            # 显示对阵信息
+            match_list = match_info.get('matchList', [])
+            self.match_data = match_list
+            
+            for i, match in enumerate(match_list[:4]):  # 只显示前4场
+                # 正确解析API数据
+                match_num = match.get('matchNum', '未知')
+                master_team = match.get('masterTeamName', '未知')
+                guest_team = match.get('guestTeamName', '未知')
+                league = match.get('matchName', '未知')  # 联赛名称
+                match_time = match.get('startTime', '未知')  # 开赛时间
+                
+                print(f"解析第{i+1}场: matchNum={match_num}, 主队={master_team}, 客队={guest_team}, 联赛={league}")
+                
+                details += f"第{match_num}场: {master_team} vs {guest_team} -\n"
+                
+                # 更新表格显示
+                self._update_match_table(match_num, master_team, guest_team, league, match_time)
+            
+            self.details_text.insert("1.0", details)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"显示详情失败：{e}")
+    
+    def _update_match_table(self, match_num, master_team, guest_team, league, match_time):
+        """更新对阵表格显示"""
+        try:
+            # 将match_num转换为索引（假设match_num是1-4）
+            if isinstance(match_num, str):
+                game_idx = int(match_num) - 1 if match_num.isdigit() else 0
+            else:
+                game_idx = int(match_num) - 1
+            
+            # 确保索引在有效范围内
+            if 0 <= game_idx < 4 and game_idx in self.match_labels:
+                labels = self.match_labels[game_idx]
+                
+                # 更新场次
+                labels['match_num'].config(text=str(match_num))
+                
+                # 更新联赛
+                labels['league'].config(text=league)
+                
+                # 更新开赛日期
+                if match_time:
+                    # 直接使用API返回的日期格式
+                    labels['date'].config(text=match_time)
+                
+                # 更新主队 VS 客队
+                teams_text = f"{master_team} VS {guest_team}"
+                labels['teams'].config(text=teams_text)
+                
+                print(f"更新第{game_idx+1}场: {teams_text} ({league})")
+                
+        except Exception as e:
+            print(f"更新表格失败：{e}")
+    
+    def generate_bets(self):
+        """生成投注"""
+        try:
+            # 收集所有选择的投注
+            bets = []
+            
+            # 遍历4场比赛
+            for game_idx in range(4):
+                if game_idx not in self.match_vars:
+                    continue
+                
+                home_goals = []
+                away_goals = []
+                
+                # 收集主队进球选择
+                if "主" in self.match_vars[game_idx]:
+                    for goal, var in self.match_vars[game_idx]["主"].items():
+                        if var.get():
+                            if goal == "3+":
+                                home_goals.append("3")
+                            else:
+                                home_goals.append(goal)
+                
+                # 收集客队进球选择
+                if "客" in self.match_vars[game_idx]:
+                    for goal, var in self.match_vars[game_idx]["客"].items():
+                        if var.get():
+                            if goal == "3+":
+                                away_goals.append("3")
+                            else:
+                                away_goals.append(goal)
+                
+                # 如果没有选择，默认选择0球
+                if not home_goals:
+                    home_goals = ["0"]
+                if not away_goals:
+                    away_goals = ["0"]
+                
+                # 生成该场比赛的所有组合
+                game_bets = []
+                for h_goal in home_goals:
+                    for a_goal in away_goals:
+                        game_bets.append((h_goal, a_goal))
+                
+                bets.append(game_bets)
+            
+            # 生成所有投注组合
+            all_bets = self._generate_all_combinations(bets)
+            
+            # 将生成的投注添加到投注区
+            if all_bets:
+                # 转换为8位数字格式
+                bet_strings = []
+                for bet in all_bets:
+                    bet_str = ""
+                    for game_bet in bet:
+                        bet_str += game_bet[0] + game_bet[1]
+                    bet_strings.append(bet_str)
+                
+                # 添加到投注区
+                self.betting_text.delete("1.0", tk.END)
+                self.betting_text.insert("1.0", "\n".join(bet_strings))
+                
+                # 更新投注区数据
+                self.betting_data = bet_strings.copy()
+                self.original_data = bet_strings.copy()
+                
+                # 更新统计
+                self.betting_stats.config(text=f"投注数据：{len(bet_strings)} 条")
+                
+                messagebox.showinfo("成功", f"已生成 {len(bet_strings)} 条投注数据")
+            else:
+                messagebox.showwarning("警告", "请至少选择一些投注选项")
+                
+        except Exception as e:
+            messagebox.showerror("错误", f"生成投注失败：{e}")
+    
+    def _generate_all_combinations(self, bets):
+        """生成所有投注组合"""
+        if not bets:
+            return []
+        
+        if len(bets) == 1:
+            return [[bet] for bet in bets[0]]
+        
+        result = []
+        for bet in bets[0]:
+            for combo in self._generate_all_combinations(bets[1:]):
+                result.append([bet] + combo)
+        
+        return result
 
 def main():
     root = tk.Tk()
