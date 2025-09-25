@@ -8,7 +8,7 @@ import time
 class ZucaiOddsApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("足彩数据获取器 V4 (API结构修正版)")
+        self.root.title("足彩数据获取器 V5 (精简参数版)")
         self.root.geometry("900x800")
 
         # --- 设置字体 ---
@@ -105,21 +105,29 @@ class ZucaiOddsApp:
 
     def _fetch_data_worker(self, lottery_no):
         base_url = "https://apic.51honghuodian.com/api/zucai/selectlist"
-        params = {'platform': 'hhjdc_other', '_prt': 'https', 'ver': '20180101000000',
-                  'lottery_type': 'ToTo', 'lottery_no': lottery_no, 'station_user_id': '1162017'}
+        
+        # --- 根据您的发现，注释掉非必需参数 ---
+        params = {
+            # 'platform': 'hhjdc_other',
+            # '_prt': 'https',
+            # 'ver': '20180101000000',
+            'lottery_type': 'ToTo',       # 核心参数
+            'lottery_no': lottery_no,     # 核心参数
+            # 'station_user_id': '1162017'
+        }
+        
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
 
         try:
             response = requests.get(base_url, params=params, headers=headers, timeout=10)
             
-            self.root.after(0, self.log_to_debug_window, f"请求的URL:\n{response.url}")
+            self.root.after(0, self.log_to_debug_window, f"请求的URL (精简版):\n{response.url}")
             self.root.after(0, self.log_to_debug_window, f"服务器响应状态码: {response.status_code}")
             response.raise_for_status()
             self.root.after(0, self.log_to_debug_window, f"服务器返回的原始数据:\n{response.text}")
             
             data = response.json()
             
-            # [修正] 判断成功的条件从 code==0 改为 errcode==0
             if data.get("errcode") == 0 and "data" in data and "match_list" in data["data"]:
                 self.root.after(0, self.update_ui, True, data['data'])
             else:
@@ -142,24 +150,19 @@ class ZucaiOddsApp:
         if success:
             self.status_label.config(text="数据获取成功！", foreground="green")
             
-            # [修正] 从 match_list 字典中解析数据
             match_list_dict = data_or_error.get('match_list', {})
             
-            # 安全地从第一场比赛中提取公共信息
             if match_list_dict:
                 first_match = next(iter(match_list_dict.values()))
                 lottery_no = first_match.get('lottery_no', 'N/A')
-                # 假设彩票名称固定或不需要显示
                 info_text = f"足球胜负彩 | 期号: {lottery_no}"
                 self.info_label.config(text=info_text)
 
-            # [修正] 遍历字典
             for match_no_key, match_data in sorted(match_list_dict.items(), key=lambda item: int(item[0])):
                 odds = match_data.get('odds', {})
-                # [修正] 按新的赔率key获取值: 3-胜, 1-平, 0-负
-                sp_win = odds.get('3', 'N/A')  # '3' 代表胜
-                sp_draw = odds.get('1', 'N/A') # '1' 代表平
-                sp_loss = odds.get('0', 'N/A') # '0' 代表负
+                sp_win = odds.get('3', 'N/A')
+                sp_draw = odds.get('1', 'N/A')
+                sp_loss = odds.get('0', 'N/A')
                 
                 self.tree.insert('', 'end', values=(
                     match_data.get('serial_no', 'N/A'),
@@ -178,4 +181,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = ZucaiOddsApp(root)
     root.mainloop()
-
