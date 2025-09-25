@@ -11,13 +11,15 @@ class JQC4GameFilter:
     def __init__(self, root):
         self.root = root
         self.root.title("4场进球玩法过滤器")
-        self.root.geometry("1000x700")
+        self.root.geometry("1400x900")
         self.root.resizable(True, True)
+        self.root.configure(bg='#FFFFFF')
         
         # 数据存储
         self.original_data = []  # 原始投注数据
         self.betting_data = []   # 投注区数据
         self.filtered_data = []  # 过滤后数据
+        self.history = []  # 操作历史记录
         
         self._create_widgets()
         self._setup_styles()
@@ -25,23 +27,120 @@ class JQC4GameFilter:
     def _setup_styles(self):
         """设置界面样式"""
         self.style = ttk.Style()
-        self.style.theme_use('clam')
+        # 使用更现代的主题
+        self.style.theme_use('vista')
         
-        # 配置样式
-        self.style.configure('Title.TLabel', font=('Microsoft YaHei UI', 14, 'bold'))
-        self.style.configure('Header.TLabel', font=('Microsoft YaHei UI', 11, 'bold'))
-        self.style.configure('Filter.TButton', font=('Microsoft YaHei UI', 10))
-        self.style.configure('Clear.TButton', font=('Microsoft YaHei UI', 10))
+        # 配置颜色主题
+        self.colors = {
+            'primary': '#007BFF',      # 主色调 - 蓝色
+            'secondary': '#6C757D',    # 次要色 - 灰色
+            'success': '#28A745',      # 成功色 - 绿色
+            'danger': '#DC3545',       # 危险色 - 红色
+            'warning': '#FFC107',      # 警告色 - 黄色
+            'light': '#FFFFFF',        # 浅色背景
+            'dark': '#212529',         # 深色文字
+            'border': '#DEE2E6'        # 边框色
+        }
+        
+        # 标题样式
+        self.style.configure('Title.TLabel',
+                           font=('Microsoft YaHei UI', 18, 'bold'),
+                           foreground='#1E90FF',  # 深蓝色
+                           background=self.colors['light'])
+        
+        # 头部标签样式
+        self.style.configure('Header.TLabel',
+                           font=('Microsoft YaHei UI', 13, 'bold'),
+                           foreground='#4169E1',  # 皇家蓝
+                           background=self.colors['light'])
+        
+        # 说明文字样式
+        self.style.configure('Info.TLabel', 
+                           font=('Microsoft YaHei UI', 9),
+                           foreground='#6C757D',
+                           background=self.colors['light'])
         
         # 按钮样式
-        self.style.configure('Filter.TButton', foreground='white', background='#007bff')
-        self.style.configure('Clear.TButton', foreground='white', background='#6c757d')
+        self.style.configure('Primary.TButton',
+                           font=('Microsoft YaHei UI', 12, 'bold'),
+                           foreground='white',
+                           background='#1E90FF',  # 深蓝色
+                           borderwidth=2,
+                           relief='raised',
+                           focuscolor='none')
         
-        self.style.map('Filter.TButton', background=[('active', '#0056b3')])
-        self.style.map('Clear.TButton', background=[('active', '#545b62')])
+        self.style.configure('Secondary.TButton',
+                           font=('Microsoft YaHei UI', 11),
+                           foreground='white',
+                           background='#4169E1',  # 皇家蓝
+                           borderwidth=2,
+                           relief='raised',
+                           focuscolor='none')
+        
+        self.style.configure('Success.TButton',
+                           font=('Microsoft YaHei UI', 11),
+                           foreground='white',
+                           background='#00BFFF',  # 深天蓝色
+                           borderwidth=2,
+                           relief='raised',
+                           focuscolor='none')
+        
+        self.style.configure('Danger.TButton',
+                           font=('Microsoft YaHei UI', 11),
+                           foreground='white',
+                           background='#0066CC',  # 深蓝色
+                           borderwidth=2,
+                           relief='raised',
+                           focuscolor='none')
+        
+        # 按钮悬停效果 - 更明显的视觉反馈
+        self.style.map('Primary.TButton',
+                      background=[('active', '#004499')],
+                      relief=[('pressed', 'sunken'), ('active', 'raised')])
+        self.style.map('Secondary.TButton',
+                      background=[('active', '#004499')],
+                      relief=[('pressed', 'sunken'), ('active', 'raised')])
+        self.style.map('Success.TButton',
+                      background=[('active', '#004499')],
+                      relief=[('pressed', 'sunken'), ('active', 'raised')])
+        self.style.map('Danger.TButton',
+                      background=[('active', '#004499')],
+                      relief=[('pressed', 'sunken'), ('active', 'raised')])
+        
+        # 框架样式
+        self.style.configure('Card.TFrame', 
+                           background=self.colors['light'],
+                           relief='solid',
+                           borderwidth=1)
+        
+        # 标签框架样式
+        self.style.configure('Card.TLabelframe', 
+                           background=self.colors['light'],
+                           relief='solid',
+                           borderwidth=1)
+        
+        self.style.configure('Card.TLabelframe.Label',
+                           font=('Microsoft YaHei UI', 12, 'bold'),
+                           foreground='#4169E1',  # 皇家蓝
+                           background=self.colors['light'])
+        
+        # 输入框样式
+        self.style.configure('Modern.TEntry',
+                           fieldbackground='white',
+                           borderwidth=1,
+                           relief='solid')
+        
+        # 下拉框样式
+        self.style.configure('Modern.TCombobox',
+                           fieldbackground='white',
+                           borderwidth=1,
+                           relief='solid')
         
         # 高亮输入框样式
-        self.style.configure('Highlight.TEntry', fieldbackground='#d4edda', foreground='#155724')
+        self.style.configure('Highlight.TEntry', 
+                           background='#D4EDDA',
+                           borderwidth=2,
+                           relief='solid')
     
     def _create_widgets(self):
         """创建界面组件"""
@@ -76,9 +175,9 @@ class JQC4GameFilter:
         input_btn_frame.pack(fill=tk.X)
         
         ttk.Button(input_btn_frame, text="加载数据到投注区", command=self.load_data_to_betting_area, 
-                  style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
+                  style='Primary.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(input_btn_frame, text="清空", command=self.clear_input, 
-                  style='Clear.TButton').pack(side=tk.LEFT)
+                  style='Danger.TButton').pack(side=tk.LEFT)
         
         # 数据统计
         self.stats_label = ttk.Label(left_frame, text="数据统计：0 条", 
@@ -109,12 +208,16 @@ class JQC4GameFilter:
     def _create_filter_controls(self, parent):
         """创建过滤器控制界面"""
         # 胜平负过滤区域
-        wdl_frame = ttk.LabelFrame(parent, text="胜平负过滤", padding="10")
+        wdl_frame = ttk.LabelFrame(parent, text="胜平负过滤", padding="10", style='Card.TLabelframe')
         wdl_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # 添加说明文字
+        info_label = ttk.Label(wdl_frame, text="说明：勾选任意选项即启用该场过滤，支持多选", 
+                              style='Info.TLabel')
+        info_label.pack(anchor=tk.W, pady=(0, 10))
         
         # 4场比赛的胜平负设置
         self.wdl_vars = {}
-        self.wdl_checks = {}
         
         for i in range(4):
             game_frame = ttk.Frame(wdl_frame)
@@ -122,27 +225,33 @@ class JQC4GameFilter:
             
             ttk.Label(game_frame, text=f"第{i+1}场：", width=8).pack(side=tk.LEFT)
             
-            # 胜平负选择
-            wdl_var = tk.StringVar(value="任意")
-            self.wdl_vars[i] = wdl_var
+            # 胜平负多选勾选框
+            wdl_vars = {
+                '胜': tk.BooleanVar(),
+                '平': tk.BooleanVar(), 
+                '负': tk.BooleanVar()
+            }
+            self.wdl_vars[i] = wdl_vars
             
-            wdl_combo = ttk.Combobox(game_frame, textvariable=wdl_var, 
-                                   values=["任意", "胜", "平", "负"], width=8, state="readonly")
-            wdl_combo.pack(side=tk.LEFT, padx=(0, 10))
-            
-            # 启用复选框
-            check_var = tk.BooleanVar()
-            self.wdl_checks[i] = check_var
-            
-            ttk.Checkbutton(game_frame, text="启用", variable=check_var).pack(side=tk.LEFT)
+            # 创建三个勾选框
+            tk.Checkbutton(game_frame, text="胜", variable=wdl_vars['胜'], 
+                          font=('Microsoft YaHei UI', 9)).pack(side=tk.LEFT, padx=(0, 5))
+            tk.Checkbutton(game_frame, text="平", variable=wdl_vars['平'], 
+                          font=('Microsoft YaHei UI', 9)).pack(side=tk.LEFT, padx=(0, 5))
+            tk.Checkbutton(game_frame, text="负", variable=wdl_vars['负'], 
+                          font=('Microsoft YaHei UI', 9)).pack(side=tk.LEFT)
         
         # 大小球过滤区域
-        ou_frame = ttk.LabelFrame(parent, text="大小球过滤", padding="10")
+        ou_frame = ttk.LabelFrame(parent, text="大小球过滤", padding="10", style='Card.TLabelframe')
         ou_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # 添加说明文字
+        info_label2 = ttk.Label(ou_frame, text="说明：选择非'任意'选项即启用该场过滤，单选模式", 
+                               style='Info.TLabel')
+        info_label2.pack(anchor=tk.W, pady=(0, 10))
         
         # 4场比赛的大小球设置
         self.ou_vars = {}
-        self.ou_checks = {}
         
         for i in range(4):
             game_frame = ttk.Frame(ou_frame)
@@ -150,30 +259,29 @@ class JQC4GameFilter:
             
             ttk.Label(game_frame, text=f"第{i+1}场：", width=8).pack(side=tk.LEFT)
             
-            # 大小球选择
+            # 大小球单选下拉框
             ou_var = tk.StringVar(value="任意")
             self.ou_vars[i] = ou_var
             
             ou_combo = ttk.Combobox(game_frame, textvariable=ou_var, 
-                                  values=["任意", "大球", "小球"], width=8, state="readonly")
-            ou_combo.pack(side=tk.LEFT, padx=(0, 10))
-            
-            # 启用复选框
-            check_var = tk.BooleanVar()
-            self.ou_checks[i] = check_var
-            
-            ttk.Checkbutton(game_frame, text="启用", variable=check_var).pack(side=tk.LEFT)
+                                  values=["任意", "大球", "小球"], width=8, state="readonly",
+                                  style='Modern.TCombobox')
+            ou_combo.pack(side=tk.LEFT)
         
         # 过滤按钮区域
         filter_btn_frame = ttk.Frame(parent)
         filter_btn_frame.pack(fill=tk.X, pady=(20, 0))
         
         ttk.Button(filter_btn_frame, text="开始过滤", command=self.apply_filter, 
-                  style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
+                  style='Primary.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(filter_btn_frame, text="重置过滤", command=self.reset_filter, 
-                  style='Clear.TButton').pack(side=tk.LEFT, padx=(0, 10))
+                  style='Danger.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(filter_btn_frame, text="比分频率缩水", command=self.show_frequency_filter, 
-                  style='Filter.TButton').pack(side=tk.LEFT)
+                  style='Secondary.TButton').pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(filter_btn_frame, text="自由缩水", command=self.show_free_shrink_dialog, 
+                  style='Success.TButton').pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(filter_btn_frame, text="一键恢复", command=self.undo_last_operation, 
+                  style='Secondary.TButton').pack(side=tk.LEFT)
         
         # 结果显示区域
         result_frame = ttk.LabelFrame(parent, text="过滤结果", padding="10")
@@ -194,9 +302,11 @@ class JQC4GameFilter:
         result_btn_frame.pack(fill=tk.X, pady=(10, 0))
         
         ttk.Button(result_btn_frame, text="复制结果", command=self.copy_result, 
-                  style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
+                  style='Primary.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(result_btn_frame, text="清空结果", command=self.clear_result, 
-                  style='Clear.TButton').pack(side=tk.LEFT)
+                  style='Danger.TButton').pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(result_btn_frame, text="导出文本", command=self.export_result, 
+                  style='Success.TButton').pack(side=tk.LEFT)
     
     def load_data_to_betting_area(self):
         """加载数据到投注区"""
@@ -243,24 +353,36 @@ class JQC4GameFilter:
         """清空投注区"""
         self.betting_text.delete("1.0", tk.END)
         self.betting_data = []
+        self.original_data = []
+        self.filtered_data = []
         self.betting_stats.config(text="投注数据：0 条")
         self.stats_label.config(text="数据统计：0 条")
+        self.result_text.delete("1.0", tk.END)
+        self.result_stats.config(text="过滤结果：0 条")
     
     def apply_filter(self):
         """应用过滤器"""
-        if not self.original_data:
-            messagebox.showwarning("警告", "请先加载投注数据")
+        if not self.betting_data:
+            messagebox.showwarning("警告", "投注区没有数据，请先加载数据到投注区")
             return
         
         try:
+            # 保存当前状态到历史记录
+            self._save_to_history()
+            
             self.filtered_data = []
             
-            for bet in self.original_data:
+            for bet in self.betting_data:
                 if self._check_bet(bet):
                     self.filtered_data.append(bet)
             
             # 显示结果
             self._display_results()
+            
+            # 显示过滤结果统计
+            original_count = len(self.betting_data)
+            filtered_count = len(self.filtered_data)
+            messagebox.showinfo("过滤完成", f"从 {original_count} 条投注数据中筛选出 {filtered_count} 条结果")
             
         except Exception as e:
             messagebox.showerror("错误", f"过滤失败：{e}")
@@ -276,24 +398,24 @@ class JQC4GameFilter:
         
         # 检查胜平负过滤
         for i in range(4):
-            if self.wdl_checks[i].get():  # 如果启用了该场的过滤
-                wdl_condition = self.wdl_vars[i].get()
-                if wdl_condition != "任意":
-                    home_goals, away_goals = games[i]
-                    result = self._get_wdl_result(home_goals, away_goals)
-                    if result != wdl_condition:
-                        return False
-        
+            # 检查是否有任何胜平负选项被选中
+            wdl_selected = any(self.wdl_vars[i][result].get() for result in ['胜', '平', '负'])
+            if wdl_selected:  # 如果有选项被选中
+                home_goals, away_goals = games[i]
+                result = self._get_wdl_result(home_goals, away_goals)
+                # 检查结果是否在选中的选项中
+                if not self.wdl_vars[i][result].get():
+                    return False
+
         # 检查大小球过滤
         for i in range(4):
-            if self.ou_checks[i].get():  # 如果启用了该场的过滤
-                ou_condition = self.ou_vars[i].get()
-                if ou_condition != "任意":
-                    home_goals, away_goals = games[i]
-                    total_goals = home_goals + away_goals
-                    ou_result = "大球" if total_goals >= 3 else "小球"
-                    if ou_result != ou_condition:
-                        return False
+            ou_condition = self.ou_vars[i].get()
+            if ou_condition != "任意":  # 如果选择了具体的大小球条件
+                home_goals, away_goals = games[i]
+                total_goals = home_goals + away_goals
+                ou_result = "大球" if total_goals >= 3 else "小球"
+                if ou_result != ou_condition:
+                    return False
         
         return True
     
@@ -320,10 +442,11 @@ class JQC4GameFilter:
         """重置过滤器"""
         # 重置所有选择
         for i in range(4):
-            self.wdl_vars[i].set("任意")
-            self.wdl_checks[i].set(False)
+            # 重置胜平负选择
+            for result in ['胜', '平', '负']:
+                self.wdl_vars[i][result].set(False)
+            # 重置大小球选择
             self.ou_vars[i].set("任意")
-            self.ou_checks[i].set(False)
         
         # 清空结果
         self.clear_result()
@@ -337,6 +460,45 @@ class JQC4GameFilter:
             messagebox.showinfo("成功", f"已复制 {len(self.filtered_data)} 条结果到剪贴板")
         else:
             messagebox.showwarning("警告", "没有结果可复制")
+    
+    def export_result(self):
+        """导出结果到文本文件"""
+        if not self.filtered_data:
+            messagebox.showwarning("警告", "没有结果可导出")
+            return
+        
+        try:
+            from tkinter import filedialog
+            import os
+            from datetime import datetime
+            
+            # 生成默认文件名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"过滤结果_{timestamp}.txt"
+            
+            # 选择保存位置
+            file_path = filedialog.asksaveasfilename(
+                title="导出过滤结果",
+                defaultextension=".txt",
+                filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")],
+                initialvalue=default_filename
+            )
+            
+            if file_path:
+                # 写入文件
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(f"4场进球玩法过滤结果\n")
+                    f.write(f"导出时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"结果数量：{len(self.filtered_data)} 条\n")
+                    f.write("=" * 50 + "\n\n")
+                    
+                    for i, bet in enumerate(self.filtered_data, 1):
+                        f.write(f"{i:4d}. {bet}\n")
+                
+                messagebox.showinfo("导出成功", f"已成功导出 {len(self.filtered_data)} 条结果到：\n{file_path}")
+                
+        except Exception as e:
+            messagebox.showerror("导出失败", f"导出文件时发生错误：{e}")
     
     def clear_result(self):
         """清空结果"""
@@ -354,14 +516,14 @@ class JQC4GameFilter:
         # 创建频率缩水窗口
         freq_window = tk.Toplevel(self.root)
         freq_window.title("比分频率缩水")
-        freq_window.geometry("1000x800")
+        freq_window.geometry("1400x1000")
         freq_window.resizable(True, True)
         
         # 居中显示
         freq_window.update_idletasks()
-        x = (freq_window.winfo_screenwidth() // 2) - (1000 // 2)
-        y = (freq_window.winfo_screenheight() // 2) - (800 // 2)
-        freq_window.geometry(f'1000x800+{x}+{y}')
+        x = (freq_window.winfo_screenwidth() // 2) - (1400 // 2)
+        y = (freq_window.winfo_screenheight() // 2) - (1000 // 2)
+        freq_window.geometry(f'1400x1000+{x}+{y}')
         
         # 主框架
         main_frame = ttk.Frame(freq_window, padding="20")
@@ -390,64 +552,117 @@ class JQC4GameFilter:
                                  foreground='#007bff')
         summary_label.pack()
         
-        # 频率调整区域
+        # 频率调整区域（使用滚动区域）
         freq_frame = ttk.LabelFrame(main_frame, text="频率调整", padding="15")
         freq_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
+        
+        # 创建滚动区域
+        canvas = tk.Canvas(freq_frame, height=600)
+        scrollbar = ttk.Scrollbar(freq_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
         
         # 创建频率变量存储
         freq_vars = {}
         
-        # 创建4场比赛的胜平负频率调整区域
-        games_frame = ttk.Frame(freq_frame)
-        games_frame.pack(fill=tk.BOTH, expand=True)
+        # 创建两列布局：左边第1、2场，右边第3、4场
+        main_games_frame = ttk.Frame(scrollable_frame)
+        main_games_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 4场比赛，每场3个区域（胜、平、负）
-        for game_idx in range(4):
-            game_frame = ttk.LabelFrame(games_frame, text=f"第{game_idx + 1}场", padding="10")
-            game_frame.grid(row=0, column=game_idx, padx=5, pady=5, sticky="nsew")
+        # 左侧列：第1场和第2场
+        left_frame = ttk.Frame(main_games_frame)
+        left_frame.grid(row=0, column=0, padx=(0, 10), pady=5, sticky="nsew")
+        
+        # 右侧列：第3场和第4场
+        right_frame = ttk.Frame(main_games_frame)
+        right_frame.grid(row=0, column=1, padx=(10, 0), pady=5, sticky="nsew")
+        
+        # 配置主框架的列权重
+        main_games_frame.columnconfigure(0, weight=1)
+        main_games_frame.columnconfigure(1, weight=1)
+        
+        # 创建比赛控件的函数
+        def create_game_controls(parent_frame, game_idx):
+            game_frame = ttk.LabelFrame(parent_frame, text=f"第{game_idx + 1}场", padding="10")
+            game_frame.pack(fill=tk.BOTH, expand=True, pady=5)
             
-            # 胜平负三个区域
+            # 胜平负三个区域横排
             for result_idx, result_name in enumerate(["胜区", "平区", "负区"]):
                 result_frame = ttk.LabelFrame(game_frame, text=result_name, padding="5")
-                result_frame.grid(row=result_idx, column=0, padx=2, pady=2, sticky="ew")
+                result_frame.grid(row=0, column=result_idx, padx=5, pady=2, sticky="nsew")
                 
-                # 创建该结果的频率调整控件
-                result_key = f"game_{game_idx}_{result_idx}"  # game_0_0, game_0_1, game_0_2 等
+                # 获取该结果对应的比分列表
+                scores = self._get_scores_by_result(result_idx)
                 
-                # 频率调整控件
-                control_frame = ttk.Frame(result_frame)
-                control_frame.pack(fill=tk.X)
-                
-                # 减少按钮
-                ttk.Button(control_frame, text="◀", width=2, 
-                          command=lambda k=result_key: self._adjust_frequency(freq_vars[k], -0.1, summary_text)).pack(side=tk.LEFT, padx=(0, 3))
-                
-                # 频率输入框
-                freq_var = tk.StringVar(value="0.0")
-                freq_vars[result_key] = freq_var
-                freq_entry = ttk.Entry(control_frame, textvariable=freq_var, width=6, justify=tk.CENTER,
-                                      font=('Microsoft YaHei UI', 10))
-                freq_entry.pack(side=tk.LEFT, padx=(0, 3))
-                
-                # 保存输入框引用
-                freq_vars[f"{result_key}_entry"] = freq_entry
-                
-                # 绑定输入框变化事件
-                freq_var.trace('w', lambda *args, k=result_key: self._update_frequency_summary(freq_vars, summary_text))
-                
-                ttk.Label(control_frame, text="%", width=1, 
-                         font=('Microsoft YaHei UI', 10)).pack(side=tk.LEFT)
-                
-                # 增加按钮
-                ttk.Button(control_frame, text="▶", width=2, 
-                          command=lambda k=result_key: self._adjust_frequency(freq_vars[k], 0.1, summary_text)).pack(side=tk.LEFT, padx=(3, 0))
+                # 为每个比分创建频率调整控件
+                for score in scores:
+                    score_key = f"game_{game_idx}_{score}"  # game_0_1:0, game_0_0:0 等
+                    
+                    # 频率调整控件
+                    control_frame = ttk.Frame(result_frame)
+                    control_frame.pack(fill=tk.X, pady=1)
+                    
+                    # 比分标签
+                    ttk.Label(control_frame, text=f"{score}：", width=6, 
+                             font=('Microsoft YaHei UI', 9)).pack(side=tk.LEFT)
+            
+            # 减少按钮
+                    ttk.Button(control_frame, text="◀", width=2, 
+                              command=lambda k=score_key: self._adjust_frequency(freq_vars[k], -0.1, summary_text)).pack(side=tk.LEFT, padx=(0, 2))
+            
+            # 频率输入框
+                    freq_var = tk.StringVar(value="0.0")
+                    freq_vars[score_key] = freq_var
+                    freq_entry = ttk.Entry(control_frame, textvariable=freq_var, width=5, justify=tk.CENTER,
+                                          font=('Microsoft YaHei UI', 9))
+                    freq_entry.pack(side=tk.LEFT, padx=(0, 2))
+                    
+                    # 保存输入框引用
+                    freq_vars[f"{score_key}_entry"] = freq_entry
+                    
+                    # 绑定输入框变化事件
+                    freq_var.trace('w', lambda *args, k=score_key: self._update_frequency_summary(freq_vars, summary_text))
+                    
+                    ttk.Label(control_frame, text="%", width=1, 
+                             font=('Microsoft YaHei UI', 9)).pack(side=tk.LEFT)
+            
+            # 增加按钮
+                    ttk.Button(control_frame, text="▶", width=2, 
+                              command=lambda k=score_key: self._adjust_frequency(freq_vars[k], 0.1, summary_text)).pack(side=tk.LEFT, padx=(2, 0))
+            
+            # 配置每场比赛的列权重
+            for i in range(3):
+                game_frame.columnconfigure(i, weight=1)
         
-        # 配置列权重
-        for i in range(4):
-            games_frame.columnconfigure(i, weight=1)
+        # 创建左侧的比赛（第1场和第2场）
+        create_game_controls(left_frame, 0)  # 第1场
+        create_game_controls(left_frame, 1)  # 第2场
+        
+        # 创建右侧的比赛（第3场和第4场）
+        create_game_controls(right_frame, 2)  # 第3场
+        create_game_controls(right_frame, 3)  # 第4场
+        
+        # 显示滚动区域
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         
         # 初始化频率显示
-        self._update_frequency_display_new(freq_vars, self.betting_data, summary_text)
+        # 使用过滤结果数据，如果没有过滤结果则使用投注区数据
+        if self.filtered_data:
+            data_to_analyze = self.filtered_data
+        elif self.betting_data:
+            data_to_analyze = self.betting_data
+        else:
+            data_to_analyze = []
+        
+        self._update_frequency_display_new(freq_vars, data_to_analyze, summary_text)
         
         # 操作按钮
         btn_frame = ttk.Frame(main_frame)
@@ -461,14 +676,14 @@ class JQC4GameFilter:
                   style='Clear.TButton').pack(side=tk.RIGHT)
     
     def _update_frequency_display_new(self, freq_vars, valid_data, summary_text):
-        """更新频率显示（新版本：胜平负分区）"""
+        """更新频率显示（新版本：胜平负分区显示比分）"""
         try:
             total_count = len(valid_data)
             
-            # 统计每场比赛的胜平负频率
-            game_stats = {}
+            # 统计每场比赛的比分频率
+            game_score_stats = {}
             for game_idx in range(4):
-                game_stats[game_idx] = {'win': 0, 'draw': 0, 'lose': 0}
+                game_score_stats[game_idx] = {}
             
             for bet in valid_data:
                 for game_idx in range(4):
@@ -476,25 +691,31 @@ class JQC4GameFilter:
                     home_goals = int(bet[game_idx * 2])
                     away_goals = int(bet[game_idx * 2 + 1])
                     
-                    # 判断胜平负
-                    if home_goals > away_goals:
-                        game_stats[game_idx]['win'] += 1
-                    elif home_goals == away_goals:
-                        game_stats[game_idx]['draw'] += 1
+                    # 构造比分字符串
+                    score = f"{home_goals}:{away_goals}"
+                    
+                    # 统计比分频率
+                    if score in game_score_stats[game_idx]:
+                        game_score_stats[game_idx][score] += 1
                     else:
-                        game_stats[game_idx]['lose'] += 1
+                        game_score_stats[game_idx][score] = 1
             
             # 更新界面显示
             for game_idx in range(4):
-                for result_idx, result_key in enumerate(['win', 'draw', 'lose']):
-                    var_key = f"game_{game_idx}_{result_idx}"
-                    if var_key in freq_vars:
-                        count = game_stats[game_idx][result_key]
-                        percentage = (count / total_count) * 100
-                        freq_vars[var_key].set(f"{percentage:.1f}")
+                for result_idx in range(3):  # 胜平负3个区
+                    scores = self._get_scores_by_result(result_idx)
+                    for score in scores:
+                        var_key = f"game_{game_idx}_{score}"
+                        if var_key in freq_vars:
+                            if score in game_score_stats[game_idx]:
+                                count = game_score_stats[game_idx][score]
+                                percentage = (count / total_count) * 100
+                                freq_vars[var_key].set(f"{percentage:.1f}")
+                            else:
+                                freq_vars[var_key].set("0.0")
             
             # 高亮显示有数据的频率
-            self._highlight_frequency_entries_new(freq_vars, game_stats)
+            self._highlight_frequency_entries_by_score(freq_vars, game_score_stats)
             
             # 更新频率汇总显示
             self._update_frequency_summary(freq_vars, summary_text)
@@ -593,29 +814,86 @@ class JQC4GameFilter:
         except Exception as e:
             print(f"高亮显示失败：{e}")
     
-    def _update_frequency_summary(self, freq_vars, summary_text):
-        """更新频率汇总显示"""
+    def _highlight_frequency_entries_by_score(self, freq_vars, game_score_stats):
+        """高亮显示有数据的频率条目（按比分）"""
         try:
-            total_freq = 0.0
-            used_freq = 0.0
-            count = 0
+            # 遍历所有比赛和比分，高亮显示有数据的条目
+            for game_idx in range(4):
+                for result_idx in range(3):
+                    scores = self._get_scores_by_result(result_idx)
+                    for score in scores:
+                        var_key = f"game_{game_idx}_{score}"
+                        entry_key = f"{var_key}_entry"
+                        
+                        if entry_key in freq_vars:
+                            entry_widget = freq_vars[entry_key]
+                            if score in game_score_stats[game_idx] and game_score_stats[game_idx][score] > 0:
+                                # 有数据：使用绿色背景
+                                entry_widget.configure(style='Highlight.TEntry')
+                            else:
+                                # 无数据：使用默认样式
+                                entry_widget.configure(style='TEntry')
+        except Exception as e:
+            print(f"高亮显示失败：{e}")
+    
+    def _get_scores_by_result(self, result_idx):
+        """根据胜平负结果返回对应的比分列表"""
+        if result_idx == 0:  # 胜区：主队获胜
+            return ["1:0", "2:0", "2:1", "3:0", "3:1", "3:2"]
+        elif result_idx == 1:  # 平区：平局
+            return ["0:0", "1:1", "2:2", "3:3"]
+        else:  # 负区：主队失败
+            return ["0:1", "0:2", "1:2", "0:3", "1:3", "2:3"]
+    
+    def _update_frequency_summary(self, freq_vars, summary_text):
+        """更新频率汇总显示（显示注数）"""
+        try:
+            # 获取当前数据源
+            if self.filtered_data:
+                current_data = self.filtered_data
+                data_source = "过滤结果"
+            elif self.betting_data:
+                current_data = self.betting_data
+                data_source = "投注区数据"
+            else:
+                current_data = []
+                data_source = "无数据"
             
-            for score, var in freq_vars.items():
-                if score.endswith('_entry'):
+            total_bets = len(current_data)
+            
+            # 统计有数据的比分数量
+            score_count = 0
+            total_freq = 0.0
+            
+            # 统计所有频率设置
+            for key, var in freq_vars.items():
+                if key.endswith('_entry'):
                     continue
                 try:
                     freq = float(var.get())
                     total_freq += freq
                     if freq > 0:
-                        used_freq += freq
-                        count += 1
+                        score_count += 1
                 except ValueError:
                     pass
             
-            remaining_freq = 100.0 - total_freq
+            # 计算基于频率的目标注数
+            if total_freq > 0:
+                # 假设总频率应该对应总注数
+                target_bets = int((total_freq / 400.0) * total_bets) if total_bets > 0 else 0
+                remaining_bets = total_bets - target_bets
+            else:
+                target_bets = 0
+                remaining_bets = total_bets
+            
+            # 限制显示范围
+            if remaining_bets < -1000:
+                remaining_bets = -1000
+            elif remaining_bets > 1000:
+                remaining_bets = 1000
             
             # 更新汇总显示
-            summary_info = f"总频率: {total_freq:.1f}% | 已使用: {used_freq:.1f}% | 剩余可调: {remaining_freq:.1f}% | 有数据比分: {count}个"
+            summary_info = f"总注数: {total_bets} | 目标注数: {target_bets} | 剩余可调: {remaining_bets} | 有数据比分: {score_count}个 | 数据源: {data_source}"
             summary_text.set(summary_info)
             
         except Exception as e:
@@ -718,7 +996,7 @@ class JQC4GameFilter:
                 # 检查该比分的频率设置
                 if score in freq_settings:
                     score_freq = freq_settings[score]
-                    # 如果频率设置为0，则过滤掉该结果
+                # 如果频率设置为0，则过滤掉该结果
                     if score_freq == 0:
                         continue
                 
@@ -741,20 +1019,24 @@ class JQC4GameFilter:
             messagebox.showerror("错误", f"频率过滤失败：{e}", parent=parent_window)
     
     def _show_frequency_stats_new(self, freq_vars, parent_window):
-        """显示频率统计（新版本：胜平负分区）"""
+        """显示频率统计（新版本：胜平负分区显示比分）"""
         try:
-            # 使用投注区数据
-            if not self.betting_data:
-                messagebox.showwarning("警告", "投注区没有数据", parent=parent_window)
+            # 使用过滤结果数据，如果没有过滤结果则使用投注区数据
+            if self.filtered_data:
+                data_to_analyze = self.filtered_data
+                data_source = "过滤结果"
+            elif self.betting_data:
+                data_to_analyze = self.betting_data
+                data_source = "投注区数据"
+            else:
+                messagebox.showwarning("警告", "没有可用的数据", parent=parent_window)
                 return
-            
-            data_to_analyze = self.betting_data
             total_count = len(data_to_analyze)
             
-            # 统计每场比赛的胜平负频率
-            game_stats = {}
+            # 统计每场比赛的比分频率
+            game_score_stats = {}
             for game_idx in range(4):
-                game_stats[game_idx] = {'win': 0, 'draw': 0, 'lose': 0}
+                game_score_stats[game_idx] = {}
             
             for bet in data_to_analyze:
                 for game_idx in range(4):
@@ -762,27 +1044,34 @@ class JQC4GameFilter:
                     home_goals = int(bet[game_idx * 2])
                     away_goals = int(bet[game_idx * 2 + 1])
                     
-                    # 判断胜平负
-                    if home_goals > away_goals:
-                        game_stats[game_idx]['win'] += 1
-                    elif home_goals == away_goals:
-                        game_stats[game_idx]['draw'] += 1
+                    # 构造比分字符串
+                    score = f"{home_goals}:{away_goals}"
+                    
+                    # 统计比分频率
+                    if score in game_score_stats[game_idx]:
+                        game_score_stats[game_idx][score] += 1
                     else:
-                        game_stats[game_idx]['lose'] += 1
+                        game_score_stats[game_idx][score] = 1
             
             # 显示统计结果
-            stats_text = f"4场比赛胜平负频率统计（基于投注区数据）：\n\n"
+            stats_text = f"4场比赛比分频率统计（基于{data_source}）：\n\n"
             stats_text += f"数据条数：{total_count} 条\n\n"
             
             for game_idx in range(4):
                 stats_text += f"第{game_idx + 1}场：\n"
-                win_pct = (game_stats[game_idx]['win'] / total_count) * 100
-                draw_pct = (game_stats[game_idx]['draw'] / total_count) * 100
-                lose_pct = (game_stats[game_idx]['lose'] / total_count) * 100
                 
-                stats_text += f"  胜：{game_stats[game_idx]['win']}次 ({win_pct:.1f}%)\n"
-                stats_text += f"  平：{game_stats[game_idx]['draw']}次 ({draw_pct:.1f}%)\n"
-                stats_text += f"  负：{game_stats[game_idx]['lose']}次 ({lose_pct:.1f}%)\n\n"
+                # 按胜平负分区显示
+                for result_idx, result_name in enumerate(["胜区", "平区", "负区"]):
+                    stats_text += f"  {result_name}：\n"
+                    scores = self._get_scores_by_result(result_idx)
+                    
+                    for score in scores:
+                        if score in game_score_stats[game_idx]:
+                            count = game_score_stats[game_idx][score]
+                            percentage = (count / total_count) * 100
+                            stats_text += f"    {score}：{count}次 ({percentage:.1f}%)\n"
+                
+                stats_text += "\n"
             
             messagebox.showinfo("频率统计", stats_text, parent=parent_window)
             
@@ -790,28 +1079,39 @@ class JQC4GameFilter:
             messagebox.showerror("错误", f"统计失败：{e}", parent=parent_window)
     
     def _apply_frequency_filter_new(self, freq_vars, parent_window):
-        """应用频率过滤（新版本：胜平负分区）"""
+        """应用频率过滤（新版本：按比分过滤）"""
         try:
-            # 使用投注区数据
-            if not self.betting_data:
-                messagebox.showwarning("警告", "投注区没有数据", parent=parent_window)
-                return
+            # 保存当前状态到历史记录
+            self._save_to_history()
             
-            valid_data = self.betting_data.copy()
+            # 使用过滤结果数据，如果没有过滤结果则使用投注区数据
+            if self.filtered_data:
+                valid_data = self.filtered_data.copy()
+                data_source = "过滤结果"
+            elif self.betting_data:
+                valid_data = self.betting_data.copy()
+                data_source = "投注区数据"
+            else:
+                messagebox.showwarning("警告", "没有可用的数据", parent=parent_window)
+                return
             
             # 获取频率设置
             freq_settings = {}
             for game_idx in range(4):
                 for result_idx in range(3):
-                    var_key = f"game_{game_idx}_{result_idx}"
-                    if var_key in freq_vars:
-                        try:
-                            freq_settings[var_key] = float(freq_vars[var_key].get())
-                        except ValueError:
-                            freq_settings[var_key] = 0.0
+                    scores = self._get_scores_by_result(result_idx)
+                    for score in scores:
+                        var_key = f"game_{game_idx}_{score}"
+                        if var_key in freq_vars:
+                            try:
+                                freq_settings[var_key] = float(freq_vars[var_key].get())
+                            except ValueError:
+                                freq_settings[var_key] = 0.0
             
-            # 应用胜平负频率过滤
+            # 应用比分频率过滤和扩充
             filtered_data = []
+            
+            # 首先过滤掉频率为0的比分
             for bet in valid_data:
                 should_include = True
                 
@@ -820,15 +1120,10 @@ class JQC4GameFilter:
                     home_goals = int(bet[game_idx * 2])
                     away_goals = int(bet[game_idx * 2 + 1])
                     
-                    # 判断胜平负
-                    if home_goals > away_goals:
-                        result_idx = 0  # 胜
-                    elif home_goals == away_goals:
-                        result_idx = 1  # 平
-                    else:
-                        result_idx = 2  # 负
+                    # 构造比分字符串
+                    score = f"{home_goals}:{away_goals}"
                     
-                    var_key = f"game_{game_idx}_{result_idx}"
+                    var_key = f"game_{game_idx}_{score}"
                     if var_key in freq_settings:
                         if freq_settings[var_key] == 0:
                             should_include = False
@@ -837,21 +1132,389 @@ class JQC4GameFilter:
                 if should_include:
                     filtered_data.append(bet)
             
+            # 然后根据频率设置扩充数据
+            # 如果用户增加了某些比分的频率，我们需要扩充这些比分的数据
+            expanded_data = []
+            
+            # 统计当前各比分的数量
+            score_counts = {}
+            for game_idx in range(4):
+                score_counts[game_idx] = {}
+            
+            for bet in filtered_data:
+                for game_idx in range(4):
+                    home_goals = int(bet[game_idx * 2])
+                    away_goals = int(bet[game_idx * 2 + 1])
+                    score = f"{home_goals}:{away_goals}"
+                    
+                    if score in score_counts[game_idx]:
+                        score_counts[game_idx][score] += 1
+                    else:
+                        score_counts[game_idx][score] = 1
+            
+            # 计算需要扩充的比分
+            total_bets = len(filtered_data)
+            for game_idx in range(4):
+                for result_idx in range(3):
+                    scores = self._get_scores_by_result(result_idx)
+                    for score in scores:
+                        var_key = f"game_{game_idx}_{score}"
+                        if var_key in freq_settings:
+                            target_freq = freq_settings[var_key]
+                            if target_freq > 0:
+                                # 计算目标数量
+                                target_count = int((target_freq / 100.0) * total_bets)
+                                current_count = score_counts[game_idx].get(score, 0)
+                                
+                                # 如果需要扩充
+                                if target_count > current_count:
+                                    # 从原始数据中寻找该比分的投注进行扩充
+                                    needed = target_count - current_count
+                                    found = 0
+                                    
+                                    # 从投注区数据中寻找该比分的投注
+                                    for bet in self.betting_data:
+                                        if found >= needed:
+                                            break
+                                        
+                                        bet_home_goals = int(bet[game_idx * 2])
+                                        bet_away_goals = int(bet[game_idx * 2 + 1])
+                                        bet_score = f"{bet_home_goals}:{bet_away_goals}"
+                                        
+                                        if bet_score == score and bet not in filtered_data:
+                                            # 检查这个投注是否满足其他条件
+                                            other_games_ok = True
+                                            for other_game_idx in range(4):
+                                                if other_game_idx != game_idx:
+                                                    other_var_key = f"game_{other_game_idx}_{bet[other_game_idx * 2]}:{bet[other_game_idx * 2 + 1]}"
+                                                    if other_var_key in freq_settings and freq_settings[other_var_key] == 0:
+                                                        other_games_ok = False
+                                                        break
+                                            
+                                            if other_games_ok:
+                                                filtered_data.append(bet)
+                                                found += 1
+                                
+                                # 如果需要缩水（当前数量超过目标数量）
+                                elif target_count < current_count:
+                                    # 随机移除多余的该比分投注
+                                    excess = current_count - target_count
+                                    removed = 0
+                                    
+                                    # 找到所有该比分的投注
+                                    bets_to_remove = []
+                                    for bet in filtered_data:
+                                        if removed >= excess:
+                                            break
+                                        
+                                        bet_home_goals = int(bet[game_idx * 2])
+                                        bet_away_goals = int(bet[game_idx * 2 + 1])
+                                        bet_score = f"{bet_home_goals}:{bet_away_goals}"
+                                        
+                                        if bet_score == score:
+                                            bets_to_remove.append(bet)
+                                            removed += 1
+                                    
+                                    # 从filtered_data中移除这些投注
+                                    for bet in bets_to_remove:
+                                        if bet in filtered_data:
+                                            filtered_data.remove(bet)
+            
+            # 最终结果
+            final_data = filtered_data
+            
             # 更新结果
-            self.filtered_data = filtered_data
+            self.filtered_data = final_data
             self._display_results()
             
             # 更新数据统计
-            self.result_stats.config(text=f"过滤结果：{len(filtered_data)} 条")
+            self.result_stats.config(text=f"过滤结果：{len(final_data)} 条")
             
-            # 显示完成提示
-            messagebox.showinfo("完成", f"频率缩水完成！从 {len(valid_data)} 条数据中筛选出 {len(filtered_data)} 条结果", parent=parent_window)
+            # 显示完成提示和详细统计
+            original_count = len(valid_data)
+            filtered_count = len(final_data)
+            reduction_rate = ((original_count - filtered_count) / original_count * 100) if original_count > 0 else 0
+            
+            # 统计被过滤掉的比分
+            filtered_scores = []
+            for game_idx in range(4):
+                for result_idx in range(3):
+                    scores = self._get_scores_by_result(result_idx)
+                    for score in scores:
+                        var_key = f"game_{game_idx}_{score}"
+                        if var_key in freq_settings and freq_settings[var_key] == 0:
+                            filtered_scores.append(f"第{game_idx + 1}场{score}")
+            
+            # 计算扩充情况
+            if filtered_count > original_count:
+                expansion_rate = ((filtered_count - original_count) / original_count * 100) if original_count > 0 else 0
+                detail_text = f"频率调整完成！\n\n"
+                detail_text += f"数据源：{data_source}\n"
+                detail_text += f"原始数据：{original_count} 条\n"
+                detail_text += f"调整结果：{filtered_count} 条\n"
+                detail_text += f"扩充比例：+{expansion_rate:.1f}%\n\n"
+            else:
+                detail_text = f"频率缩水完成！\n\n"
+                detail_text += f"数据源：{data_source}\n"
+                detail_text += f"原始数据：{original_count} 条\n"
+                detail_text += f"筛选结果：{filtered_count} 条\n"
+                detail_text += f"缩水比例：{reduction_rate:.1f}%\n\n"
+            
+            if filtered_scores:
+                detail_text += f"被过滤的比分：\n"
+                for score in filtered_scores[:10]:  # 最多显示10个
+                    detail_text += f"• {score}\n"
+                if len(filtered_scores) > 10:
+                    detail_text += f"... 等{len(filtered_scores)}个比分"
+            
+            messagebox.showinfo("频率缩水完成", detail_text, parent=parent_window)
             
             # 关闭窗口
             parent_window.destroy()
             
         except Exception as e:
             messagebox.showerror("错误", f"频率过滤失败：{e}", parent=parent_window)
+    
+    def _save_to_history(self):
+        """保存当前状态到历史记录"""
+        if self.filtered_data:
+            self.history.append({
+                'filtered_data': self.filtered_data.copy(),
+                'operation': 'filter'
+            })
+            # 限制历史记录数量，避免内存过多占用
+            if len(self.history) > 10:
+                self.history.pop(0)
+    
+    def undo_last_operation(self):
+        """恢复上一次操作"""
+        if not self.history:
+            messagebox.showinfo("提示", "没有可恢复的操作")
+            return
+        
+        try:
+            # 获取上一次状态
+            last_state = self.history.pop()
+            self.filtered_data = last_state['filtered_data']
+            
+            # 更新显示
+            self._display_results()
+            
+            messagebox.showinfo("恢复完成", f"已恢复到上一次操作，当前结果：{len(self.filtered_data)} 条")
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"恢复失败：{e}")
+    
+    def show_free_shrink_dialog(self):
+        """显示自由缩水对话框"""
+        if not self.filtered_data and not self.betting_data:
+            messagebox.showwarning("警告", "没有可用的数据进行缩水")
+            return
+        
+        # 创建缩水对话框
+        shrink_window = tk.Toplevel(self.root)
+        shrink_window.title("自由缩水")
+        shrink_window.geometry("600x600")
+        shrink_window.resizable(True, True)
+        shrink_window.transient(self.root)
+        shrink_window.grab_set()
+        
+        # 居中显示
+        shrink_window.geometry("+%d+%d" % (self.root.winfo_rootx() + 50, self.root.winfo_rooty() + 50))
+        
+        # 主框架
+        main_frame = ttk.Frame(shrink_window, padding="25")
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # 投注总金额设置
+        amount_frame = ttk.LabelFrame(main_frame, text="投注总金额(M)", padding="15")
+        amount_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        # 限定投注金额
+        self.limit_amount_var = tk.BooleanVar(value=True)
+        ttk.Radiobutton(amount_frame, text="限定投注金额为", variable=self.limit_amount_var, 
+                       value=True).pack(anchor=tk.W)
+        
+        limit_frame = ttk.Frame(amount_frame)
+        limit_frame.pack(fill=tk.X, pady=(5, 0))
+        
+        self.target_amount_var = tk.StringVar(value="200")
+        ttk.Entry(limit_frame, textvariable=self.target_amount_var, width=10).pack(side=tk.LEFT)
+        ttk.Label(limit_frame, text="注").pack(side=tk.LEFT, padx=(5, 0))
+        
+        # 不限制投注金额
+        ttk.Radiobutton(amount_frame, text="不限制投注金额", variable=self.limit_amount_var, 
+                       value=False).pack(anchor=tk.W, pady=(10, 0))
+        
+        # 选注范围设置
+        scope_frame = ttk.LabelFrame(main_frame, text="选注范围(S)", padding="15")
+        scope_frame.pack(fill=tk.X, pady=(0, 25))
+        
+        self.selection_method_var = tk.StringVar(value="random")
+        
+        ttk.Radiobutton(scope_frame, text="从所有投注结果中随机选择", 
+                       variable=self.selection_method_var, value="random").pack(anchor=tk.W)
+        ttk.Radiobutton(scope_frame, text="从所有奇数序号投注结果中选择", 
+                       variable=self.selection_method_var, value="odd").pack(anchor=tk.W)
+        ttk.Radiobutton(scope_frame, text="从所有偶数序号投注结果中选择", 
+                       variable=self.selection_method_var, value="even").pack(anchor=tk.W)
+        ttk.Radiobutton(scope_frame, text="从所有投注结果中均匀选择", 
+                       variable=self.selection_method_var, value="uniform").pack(anchor=tk.W)
+        
+        # 按钮框架
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        ttk.Button(btn_frame, text="开始缩水", command=lambda: self._apply_free_shrink(shrink_window)).pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="取消", command=shrink_window.destroy).pack(side=tk.LEFT)
+    
+    def _apply_free_shrink(self, parent_window):
+        """应用自由缩水"""
+        try:
+            # 保存当前状态到历史记录
+            self._save_to_history()
+            
+            # 获取数据源
+            if self.filtered_data:
+                source_data = self.filtered_data
+                data_source = "过滤结果"
+            else:
+                source_data = self.betting_data
+                data_source = "投注区数据"
+            
+            # 获取目标数量
+            if self.limit_amount_var.get():
+                try:
+                    target_count = int(self.target_amount_var.get())
+                    if target_count <= 0:
+                        messagebox.showerror("错误", "目标数量必须大于0", parent=parent_window)
+                        return
+                except ValueError:
+                    messagebox.showerror("错误", "请输入有效的数字", parent=parent_window)
+                    return
+            else:
+                target_count = len(source_data)
+            
+            # 如果目标数量大于等于源数据数量，不需要缩水
+            if target_count >= len(source_data):
+                messagebox.showinfo("提示", f"目标数量({target_count})大于等于源数据数量({len(source_data)})，无需缩水", parent=parent_window)
+                parent_window.destroy()
+                return
+            
+            # 根据选择方法进行缩水
+            method = self.selection_method_var.get()
+            if method == "random":
+                # 随机选择
+                import random
+                self.filtered_data = random.sample(source_data, target_count)
+            elif method == "odd":
+                # 奇数序号选择
+                odd_indices = [i for i in range(0, len(source_data), 2)]  # 0, 2, 4, 6...
+                if len(odd_indices) >= target_count:
+                    selected_indices = odd_indices[:target_count]
+                else:
+                    # 如果奇数序号不够，补充偶数序号
+                    even_indices = [i for i in range(1, len(source_data), 2)]  # 1, 3, 5, 7...
+                    selected_indices = odd_indices + even_indices[:target_count - len(odd_indices)]
+                self.filtered_data = [source_data[i] for i in selected_indices]
+            elif method == "even":
+                # 偶数序号选择
+                even_indices = [i for i in range(1, len(source_data), 2)]  # 1, 3, 5, 7...
+                if len(even_indices) >= target_count:
+                    selected_indices = even_indices[:target_count]
+                else:
+                    # 如果偶数序号不够，补充奇数序号
+                    odd_indices = [i for i in range(0, len(source_data), 2)]  # 0, 2, 4, 6...
+                    selected_indices = even_indices + odd_indices[:target_count - len(even_indices)]
+                self.filtered_data = [source_data[i] for i in selected_indices]
+            elif method == "uniform":
+                # 均匀选择 - 保持原有频率分布
+                self.filtered_data = self._uniform_selection_with_frequency_preservation(source_data, target_count)
+            
+            # 更新显示
+            self._display_results()
+            
+            # 显示结果
+            original_count = len(source_data)
+            final_count = len(self.filtered_data)
+            reduction_rate = ((original_count - final_count) / original_count * 100) if original_count > 0 else 0
+            
+            messagebox.showinfo("缩水完成", 
+                              f"缩水完成！\n\n"
+                              f"数据源：{data_source}\n"
+                              f"原始数量：{original_count} 条\n"
+                              f"缩水后：{final_count} 条\n"
+                              f"缩水比例：{reduction_rate:.1f}%\n"
+                              f"选择方法：{self._get_method_name(method)}", 
+                              parent=parent_window)
+            
+            # 关闭窗口
+            parent_window.destroy()
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"缩水失败：{e}", parent=parent_window)
+    
+    def _uniform_selection_with_frequency_preservation(self, source_data, target_count):
+        """均匀选择并保持原有频率分布"""
+        if target_count >= len(source_data):
+            return source_data.copy()
+        
+        # 统计每种比分组合的频率
+        score_groups = {}
+        for bet in source_data:
+            # 将8位数字转换为比分组合的字符串
+            score_key = bet  # 直接使用投注字符串作为键
+            if score_key in score_groups:
+                score_groups[score_key].append(bet)
+            else:
+                score_groups[score_key] = [bet]
+        
+        # 计算每种比分组合应该保留的数量
+        result = []
+        for score_key, bets in score_groups.items():
+            # 按比例计算该比分组合应该保留的数量
+            original_count = len(bets)
+            target_ratio = target_count / len(source_data)
+            target_for_this_score = max(1, int(original_count * target_ratio))
+            
+            # 如果计算出的数量超过实际数量，则取实际数量
+            target_for_this_score = min(target_for_this_score, original_count)
+            
+            # 从该比分组合中均匀选择
+            if target_for_this_score == original_count:
+                result.extend(bets)
+            else:
+                step = original_count / target_for_this_score
+                selected_indices = [int(i * step) for i in range(target_for_this_score)]
+                for idx in selected_indices:
+                    if idx < len(bets):
+                        result.append(bets[idx])
+        
+        # 如果结果数量不够，随机补充
+        if len(result) < target_count:
+            remaining_needed = target_count - len(result)
+            remaining_bets = [bet for bet in source_data if bet not in result]
+            if remaining_bets:
+                import random
+                additional = random.sample(remaining_bets, min(remaining_needed, len(remaining_bets)))
+                result.extend(additional)
+        
+        # 如果结果数量超过目标，随机移除
+        elif len(result) > target_count:
+            import random
+            result = random.sample(result, target_count)
+        
+        return result
+    
+    def _get_method_name(self, method):
+        """获取方法名称"""
+        method_names = {
+            "random": "随机选择",
+            "odd": "奇数序号选择",
+            "even": "偶数序号选择",
+            "uniform": "均匀选择(保持频率分布)"
+        }
+        return method_names.get(method, "未知方法")
 
 def main():
     root = tk.Tk()
