@@ -13,7 +13,7 @@ class JQC4GameFilter:
         self.root.title("4场进球玩法过滤器")
         self.root.geometry("1400x900")
         self.root.resizable(True, True)
-        self.root.configure(bg='#FFFFFF')
+        self.root.configure(bg='#F0F0F0')
         
         # 数据存储
         self.original_data = []  # 原始投注数据
@@ -44,68 +44,28 @@ class JQC4GameFilter:
         
         # 标题样式
         self.style.configure('Title.TLabel',
-                           font=('Microsoft YaHei UI', 24, 'bold'),
-                           foreground='#FF0000',  # 纯红色
-                           background=self.colors['light'])
+                           font=('Microsoft YaHei UI', 16, 'bold'))
         
         # 头部标签样式
         self.style.configure('Header.TLabel',
-                           font=('Microsoft YaHei UI', 16, 'bold'),
-                           foreground='#00FF00',  # 纯绿色
-                           background=self.colors['light'])
+                           font=('Microsoft YaHei UI', 12, 'bold'))
         
         # 说明文字样式
         self.style.configure('Info.TLabel',
-                           font=('Microsoft YaHei UI', 10, 'bold'),
-                           foreground='#FF00FF',  # 纯紫色
-                           background=self.colors['light'])
+                           font=('Microsoft YaHei UI', 9))
         
-        # 按钮样式
+        # 按钮样式 - 使用默认样式
         self.style.configure('Primary.TButton',
-                           font=('Microsoft YaHei UI', 15, 'bold'),
-                           foreground='white',
-                           background='#FF0000',  # 纯红色
-                           borderwidth=5,
-                           relief='raised',
-                           focuscolor='none')
+                           font=('Microsoft YaHei UI', 10))
         
         self.style.configure('Secondary.TButton',
-                           font=('Microsoft YaHei UI', 14),
-                           foreground='white',
-                           background='#00FF00',  # 纯绿色
-                           borderwidth=5,
-                           relief='raised',
-                           focuscolor='none')
+                           font=('Microsoft YaHei UI', 10))
         
         self.style.configure('Success.TButton',
-                           font=('Microsoft YaHei UI', 14),
-                           foreground='white',
-                           background='#0000FF',  # 纯蓝色
-                           borderwidth=5,
-                           relief='raised',
-                           focuscolor='none')
+                           font=('Microsoft YaHei UI', 10))
         
         self.style.configure('Danger.TButton',
-                           font=('Microsoft YaHei UI', 14),
-                           foreground='black',
-                           background='#FFFF00',  # 纯黄色
-                           borderwidth=5,
-                           relief='raised',
-                           focuscolor='none')
-        
-        # 按钮悬停效果 - 终极高对比度配色
-        self.style.map('Primary.TButton',
-                      background=[('active', '#CC0000')],
-                      relief=[('pressed', 'sunken'), ('active', 'raised')])
-        self.style.map('Secondary.TButton',
-                      background=[('active', '#00CC00')],
-                      relief=[('pressed', 'sunken'), ('active', 'raised')])
-        self.style.map('Success.TButton',
-                      background=[('active', '#0000CC')],
-                      relief=[('pressed', 'sunken'), ('active', 'raised')])
-        self.style.map('Danger.TButton',
-                      background=[('active', '#CCCC00')],
-                      relief=[('pressed', 'sunken'), ('active', 'raised')])
+                           font=('Microsoft YaHei UI', 10))
         
         # 框架样式
         self.style.configure('Card.TFrame', 
@@ -120,9 +80,7 @@ class JQC4GameFilter:
                            borderwidth=1)
         
         self.style.configure('Card.TLabelframe.Label',
-                           font=('Microsoft YaHei UI', 15, 'bold'),
-                           foreground='#0000FF',  # 纯蓝色
-                           background=self.colors['light'])
+                           font=('Microsoft YaHei UI', 11, 'bold'))
         
         # 输入框样式
         self.style.configure('Modern.TEntry',
@@ -138,7 +96,6 @@ class JQC4GameFilter:
         
         # 高亮输入框样式
         self.style.configure('Highlight.TEntry', 
-                           background='#D4EDDA',
                            borderwidth=2,
                            relief='solid')
     
@@ -162,12 +119,14 @@ class JQC4GameFilter:
         
         # 输入说明
         input_info = ttk.Label(left_frame, text="请粘贴4场进球投注结果，每行一个投注，格式如：10303111", 
-                              font=('Microsoft YaHei UI', 9), foreground='gray')
+                              style='Info.TLabel')
         input_info.pack(pady=(0, 10))
         
         # 输入文本框
         self.input_text = scrolledtext.ScrolledText(left_frame, height=20, width=30, 
-                                                   font=('Consolas', 10))
+                                                   font=('Consolas', 10),
+                                                   bg='white', fg='black',
+                                                   relief='flat', bd=1)
         self.input_text.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
         
         # 输入按钮
@@ -190,7 +149,9 @@ class JQC4GameFilter:
         
         # 投注区文本框
         self.betting_text = scrolledtext.ScrolledText(betting_frame, height=15, width=30, 
-                                                     font=('Consolas', 10))
+                                                     font=('Consolas', 10),
+                                                     bg='white', fg='black',
+                                                     relief='flat', bd=1)
         self.betting_text.pack(fill=tk.BOTH, expand=True)
         
         # 投注区统计标签
@@ -294,7 +255,9 @@ class JQC4GameFilter:
         
         # 结果显示
         self.result_text = scrolledtext.ScrolledText(result_frame, height=8, 
-                                                    font=('Consolas', 9))
+                                                    font=('Consolas', 9),
+                                                    bg='white', fg='black',
+                                                    relief='flat', bd=1)
         self.result_text.pack(fill=tk.BOTH, expand=True)
         
         # 结果操作按钮
