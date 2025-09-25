@@ -396,7 +396,9 @@ class JQC4GameFilter:
         self.result_text.delete("1.0", tk.END)
         
         if self.filtered_data:
-            for bet in self.filtered_data:
+            # 对结果进行升序排序
+            sorted_data = sorted(self.filtered_data)
+            for bet in sorted_data:
                 self.result_text.insert(tk.END, bet + "\n")
         
         self.result_stats.config(text=f"过滤结果：{len(self.filtered_data)} 条")
@@ -416,18 +418,29 @@ class JQC4GameFilter:
     
     def copy_result(self):
         """复制结果到剪贴板"""
+        # 优先复制过滤结果区，如果为空则复制投注区
         if self.filtered_data:
-            result_text = "\n".join(self.filtered_data)
+            # 对结果进行升序排序后复制
+            sorted_data = sorted(self.filtered_data)
+            result_text = "\n".join(sorted_data)
             self.root.clipboard_clear()
             self.root.clipboard_append(result_text)
-            messagebox.showinfo("成功", f"已复制 {len(self.filtered_data)} 条结果到剪贴板")
+            messagebox.showinfo("成功", f"已复制过滤结果 {len(self.filtered_data)} 条到剪贴板")
+        elif self.betting_data:
+            # 如果过滤结果区为空，复制投注区数据
+            sorted_data = sorted(self.betting_data)
+            result_text = "\n".join(sorted_data)
+            self.root.clipboard_clear()
+            self.root.clipboard_append(result_text)
+            messagebox.showinfo("成功", f"已复制投注区数据 {len(self.betting_data)} 条到剪贴板")
         else:
-            messagebox.showwarning("警告", "没有结果可复制")
+            messagebox.showwarning("警告", "没有数据可复制")
     
     def export_result(self):
         """导出结果到文本文件"""
-        if not self.filtered_data:
-            messagebox.showwarning("警告", "没有结果可导出")
+        # 优先导出过滤结果区，如果为空则导出投注区
+        if not self.filtered_data and not self.betting_data:
+            messagebox.showwarning("警告", "没有数据可导出")
             return
         
         try:
@@ -448,17 +461,27 @@ class JQC4GameFilter:
             )
             
             if file_path:
+                # 确定要导出的数据源
+                if self.filtered_data:
+                    data_to_export = self.filtered_data
+                    data_type = "过滤结果"
+                else:
+                    data_to_export = self.betting_data
+                    data_type = "投注区数据"
+                
                 # 写入文件
                 with open(file_path, 'w', encoding='utf-8') as f:
-                    f.write(f"4场进球玩法过滤结果\n")
+                    f.write(f"4场进球玩法{data_type}\n")
                     f.write(f"导出时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-                    f.write(f"结果数量：{len(self.filtered_data)} 条\n")
+                    f.write(f"数据数量：{len(data_to_export)} 条\n")
                     f.write("=" * 50 + "\n\n")
                     
-                    for i, bet in enumerate(self.filtered_data, 1):
+                    # 对结果进行升序排序后导出
+                    sorted_data = sorted(data_to_export)
+                    for i, bet in enumerate(sorted_data, 1):
                         f.write(f"{i:4d}. {bet}\n")
                 
-                messagebox.showinfo("导出成功", f"已成功导出 {len(self.filtered_data)} 条结果到：\n{file_path}")
+                messagebox.showinfo("导出成功", f"已成功导出{data_type} {len(data_to_export)} 条到：\n{file_path}")
                 
         except Exception as e:
             messagebox.showerror("导出失败", f"导出文件时发生错误：{e}")
@@ -471,9 +494,9 @@ class JQC4GameFilter:
     
     def show_frequency_filter(self):
         """显示比分频率缩水窗口"""
-        # 检查投注区是否有数据
-        if not self.betting_data:
-            messagebox.showwarning("警告", "请先加载数据到投注区")
+        # 优先检查过滤结果区，如果为空则检查投注区
+        if not self.filtered_data and not self.betting_data:
+            messagebox.showwarning("警告", "请先加载数据到投注区并进行过滤")
             return
         
         # 创建频率缩水窗口
@@ -959,7 +982,7 @@ class JQC4GameFilter:
                 # 检查该比分的频率设置
                 if score in freq_settings:
                     score_freq = freq_settings[score]
-                # 如果频率设置为0，则过滤掉该结果
+                    # 如果频率设置为0，则过滤掉该结果
                     if score_freq == 0:
                         continue
                 
@@ -1251,6 +1274,11 @@ class JQC4GameFilter:
     
     def undo_last_operation(self):
         """恢复上一次操作"""
+        # 优先检查过滤结果区，如果为空则检查投注区
+        if not self.filtered_data and not self.betting_data:
+            messagebox.showwarning("警告", "没有可用的数据进行恢复操作")
+            return
+            
         if not self.history:
             messagebox.showinfo("提示", "没有可恢复的操作")
             return
@@ -1270,8 +1298,9 @@ class JQC4GameFilter:
     
     def show_free_shrink_dialog(self):
         """显示自由缩水对话框"""
+        # 优先检查过滤结果区，如果为空则检查投注区
         if not self.filtered_data and not self.betting_data:
-            messagebox.showwarning("警告", "没有可用的数据进行缩水")
+            messagebox.showwarning("警告", "请先加载数据到投注区并进行过滤")
             return
         
         # 创建缩水对话框
