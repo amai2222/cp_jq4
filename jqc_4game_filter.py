@@ -288,9 +288,14 @@ class JQC4GameFilter:
             for col in range(4):
                 ttk.Label(parent, text="").grid(row=row, column=col, padx=1, pady=1)
         
-        # 主/客
-        ttk.Label(parent, text=team_type, font=('Microsoft YaHei UI', 9)).grid(
-            row=row, column=4, padx=1, pady=1, sticky="ew")
+        # 主/客（可点击）
+        team_label = ttk.Label(parent, text=team_type, font=('Microsoft YaHei UI', 9, 'bold'))
+        team_label.grid(row=row, column=4, padx=1, pady=1, sticky="ew")
+        # 绑定点击事件
+        team_label.bind("<Button-1>", lambda e, g=game_idx, t=team_type: self._toggle_team_selection(g, t))
+        # 添加鼠标悬停效果
+        team_label.bind("<Enter>", lambda e: team_label.configure(foreground='blue'))
+        team_label.bind("<Leave>", lambda e: team_label.configure(foreground='black'))
         
         # 进球数选择（0球, 1球, 2球, 3+球）
         goal_vars = {}
@@ -306,6 +311,21 @@ class JQC4GameFilter:
         if game_idx not in self.match_vars:
             self.match_vars[game_idx] = {}
         self.match_vars[game_idx][team_type] = goal_vars
+    
+    def _toggle_team_selection(self, game_idx, team_type):
+        """切换队伍选择状态（全选/全不选）"""
+        if game_idx not in self.match_vars or team_type not in self.match_vars[game_idx]:
+            return
+        
+        goal_vars = self.match_vars[game_idx][team_type]
+        
+        # 检查当前是否全选
+        all_selected = all(var.get() for var in goal_vars.values())
+        
+        # 如果全选则全不选，否则全选
+        new_value = not all_selected
+        for var in goal_vars.values():
+            var.set(new_value)
     
     def _create_filter_controls(self, parent):
         """创建过滤器控制界面"""
