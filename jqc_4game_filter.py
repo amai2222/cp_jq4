@@ -16,7 +16,7 @@ class JQC4GameFilter:
         self.root.title("4场进球玩法过滤器")
         self.root.geometry("1800x900")
         self.root.resizable(True, True)
-        self.root.configure(bg='#F0F0F0')
+        self.root.configure(bg='#FFFFFF')
         
         # 数据存储
         self.original_data = []  # 原始投注数据
@@ -42,16 +42,16 @@ class JQC4GameFilter:
         # 使用高对比度主题
         self.style.theme_use('clam')
         
-        # 配置终极高对比度颜色主题
+        # 配置统一白色主题
         self.colors = {
-            'primary': '#FF0000',      # 主色调 - 纯红色
-            'secondary': '#00FF00',    # 次要色 - 纯绿色
-            'success': '#0000FF',      # 成功色 - 纯蓝色
-            'danger': '#FFFF00',       # 危险色 - 纯黄色
-            'warning': '#FF00FF',      # 警告色 - 纯紫色
+            'primary': '#0078D4',      # 主色调 - 蓝色
+            'secondary': '#6C757D',    # 次要色 - 灰色
+            'success': '#28A745',      # 成功色 - 绿色
+            'danger': '#DC3545',       # 危险色 - 红色
+            'warning': '#FFC107',      # 警告色 - 黄色
             'light': '#FFFFFF',        # 纯白背景
-            'dark': '#000000',         # 纯黑文字
-            'border': '#808080'        # 灰色边框
+            'dark': '#212529',         # 深色文字
+            'border': '#DEE2E6'        # 浅灰边框
         }
         
         # 标题样式
@@ -81,13 +81,13 @@ class JQC4GameFilter:
         
         # 框架样式
         self.style.configure('Card.TFrame', 
-                           background=self.colors['light'],
+                           background='#FFFFFF',
                            relief='solid',
                            borderwidth=1)
         
         # 标签框架样式
         self.style.configure('Card.TLabelframe', 
-                           background=self.colors['light'],
+                           background='#FFFFFF',
                            relief='solid',
                            borderwidth=1)
         
@@ -126,7 +126,7 @@ class JQC4GameFilter:
         content_frame.pack(fill=tk.BOTH, expand=True)
         
         # 最左侧：期号获取和对阵选择区
-        data_frame = ttk.LabelFrame(content_frame, text="期号获取与投注选择", padding="10")
+        data_frame = ttk.LabelFrame(content_frame, text="期号获取与投注选择", padding="10", style='Card.TLabelframe')
         data_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=False, padx=(0, 10))
         data_frame.configure(width=400)
         
@@ -134,7 +134,7 @@ class JQC4GameFilter:
         self._create_data_acquisition_ui(data_frame)
         
         # 中间：投注数据输入区
-        left_frame = ttk.LabelFrame(content_frame, text="投注数据输入", padding="10")
+        left_frame = ttk.LabelFrame(content_frame, text="投注数据输入", padding="10", style='Card.TLabelframe')
         left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
         
         # 输入说明
@@ -164,7 +164,7 @@ class JQC4GameFilter:
         self.stats_label.pack(pady=(10, 0))
         
         # 投注区
-        betting_frame = ttk.LabelFrame(left_frame, text="投注区", padding="10")
+        betting_frame = ttk.LabelFrame(left_frame, text="投注区", padding="10", style='Card.TLabelframe')
         betting_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         
         # 投注区文本框
@@ -180,7 +180,7 @@ class JQC4GameFilter:
         self.betting_stats.pack(pady=(5, 0))
         
         # 右侧：过滤器设置区
-        right_frame = ttk.LabelFrame(content_frame, text="过滤器设置", padding="10")
+        right_frame = ttk.LabelFrame(content_frame, text="过滤器设置", padding="10", style='Card.TLabelframe')
         right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
         # 创建过滤器界面
@@ -189,7 +189,7 @@ class JQC4GameFilter:
     def _create_data_acquisition_ui(self, parent):
         """创建期号获取和对阵选择界面"""
         # ①数据获取区域
-        data_acq_frame = ttk.LabelFrame(parent, text="①数据获取", padding="10")
+        data_acq_frame = ttk.LabelFrame(parent, text="①数据获取", padding="10", style='Card.TLabelframe')
         data_acq_frame.pack(fill=tk.X, pady=(0, 10))
         
         # 期号输入和按钮
@@ -217,7 +217,7 @@ class JQC4GameFilter:
         self.details_text.pack(fill=tk.BOTH, expand=True)
         
         # ②投注选择区域
-        betting_frame = ttk.LabelFrame(parent, text="②投注选择", padding="10")
+        betting_frame = ttk.LabelFrame(parent, text="②投注选择", padding="10", style='Card.TLabelframe')
         betting_frame.pack(fill=tk.BOTH, expand=True, pady=(10, 0))
         
         # 创建对阵表格
@@ -370,6 +370,24 @@ class JQC4GameFilter:
                                   style='Modern.TCombobox')
             ou_combo.pack(side=tk.LEFT)
         
+        # 操作选择区域
+        operation_frame = ttk.LabelFrame(parent, text="操作选择", padding="10", style='Card.TLabelframe')
+        operation_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # 操作选择单选按钮
+        self.operation_var = tk.StringVar(value="保留")
+        
+        operation_retain = ttk.Radiobutton(operation_frame, text="保留", 
+                                         variable=self.operation_var, value="保留")
+        operation_retain.pack(side=tk.LEFT, padx=(0, 20))
+        
+        operation_delete = ttk.Radiobutton(operation_frame, text="删除", 
+                                         variable=self.operation_var, value="删除")
+        operation_delete.pack(side=tk.LEFT)
+        
+        ttk.Label(operation_frame, text="符合条件的注", 
+                 font=('Microsoft YaHei UI', 10)).pack(side=tk.LEFT, padx=(10, 0))
+        
         # 过滤按钮区域
         filter_btn_frame = ttk.Frame(parent)
         filter_btn_frame.pack(fill=tk.X, pady=(20, 0))
@@ -386,7 +404,7 @@ class JQC4GameFilter:
                   style='Secondary.TButton').pack(side=tk.LEFT)
         
         # 结果显示区域
-        result_frame = ttk.LabelFrame(parent, text="过滤结果", padding="10")
+        result_frame = ttk.LabelFrame(parent, text="过滤结果", padding="10", style='Card.TLabelframe')
         result_frame.pack(fill=tk.BOTH, expand=True, pady=(15, 0))
         
         # 结果统计
@@ -484,11 +502,22 @@ class JQC4GameFilter:
             # 保存当前状态到历史记录
             self._save_to_history()
             
+            # 获取操作选择
+            operation = self.operation_var.get()
+            
             self.filtered_data = []
             
             for bet in self.betting_data:
-                if self._check_bet(bet):
-                    self.filtered_data.append(bet)
+                meets_conditions = self._check_bet(bet)
+                
+                if operation == "保留":
+                    # 保留符合条件的注
+                    if meets_conditions:
+                        self.filtered_data.append(bet)
+                else:  # 删除
+                    # 删除符合条件的注，保留不符合条件的注
+                    if not meets_conditions:
+                        self.filtered_data.append(bet)
             
             # 显示结果
             self._display_results()
@@ -496,7 +525,8 @@ class JQC4GameFilter:
             # 显示过滤结果统计
             original_count = len(self.betting_data)
             filtered_count = len(self.filtered_data)
-            messagebox.showinfo("过滤完成", f"从 {original_count} 条投注数据中筛选出 {filtered_count} 条结果")
+            operation_text = "保留" if operation == "保留" else "删除"
+            messagebox.showinfo("过滤完成", f"从 {original_count} 条投注数据中{operation_text}了 {filtered_count} 条结果")
             
         except Exception as e:
             messagebox.showerror("错误", f"过滤失败：{e}")
@@ -679,7 +709,7 @@ class JQC4GameFilter:
                  font=('Microsoft YaHei UI', 12, 'bold')).pack()
         
         # 频率汇总显示区域
-        summary_frame = ttk.LabelFrame(main_frame, text="频率汇总", padding="10")
+        summary_frame = ttk.LabelFrame(main_frame, text="频率汇总", padding="10", style='Card.TLabelframe')
         summary_frame.pack(fill=tk.X, pady=(0, 10))
         
         # 创建汇总显示标签
@@ -690,7 +720,7 @@ class JQC4GameFilter:
         summary_label.pack()
         
         # 频率调整区域（使用滚动区域）
-        freq_frame = ttk.LabelFrame(main_frame, text="频率调整", padding="15")
+        freq_frame = ttk.LabelFrame(main_frame, text="频率调整", padding="15", style='Card.TLabelframe')
         freq_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 15))
         
         # 创建滚动区域
@@ -727,12 +757,12 @@ class JQC4GameFilter:
         
         # 创建比赛控件的函数
         def create_game_controls(parent_frame, game_idx):
-            game_frame = ttk.LabelFrame(parent_frame, text=f"第{game_idx + 1}场", padding="10")
+            game_frame = ttk.LabelFrame(parent_frame, text=f"第{game_idx + 1}场", padding="10", style='Card.TLabelframe')
             game_frame.pack(fill=tk.BOTH, expand=True, pady=5)
             
             # 胜平负三个区域横排
             for result_idx, result_name in enumerate(["胜区", "平区", "负区"]):
-                result_frame = ttk.LabelFrame(game_frame, text=result_name, padding="5")
+                result_frame = ttk.LabelFrame(game_frame, text=result_name, padding="5", style='Card.TLabelframe')
                 result_frame.grid(row=0, column=result_idx, padx=5, pady=2, sticky="nsew")
                 
                 # 获取该结果对应的比分列表
@@ -1133,9 +1163,9 @@ class JQC4GameFilter:
                 # 检查该比分的频率设置
                 if score in freq_settings:
                     score_freq = freq_settings[score]
-                    # 如果频率设置为0，则过滤掉该结果
-                    if score_freq == 0:
-                        continue
+                # 如果频率设置为0，则过滤掉该结果
+                if score_freq == 0:
+                    continue
                 
                 filtered_data.append(bet)
             
@@ -1470,7 +1500,7 @@ class JQC4GameFilter:
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # 投注总金额设置
-        amount_frame = ttk.LabelFrame(main_frame, text="投注总金额(M)", padding="15")
+        amount_frame = ttk.LabelFrame(main_frame, text="投注总金额(M)", padding="15", style='Card.TLabelframe')
         amount_frame.pack(fill=tk.X, pady=(0, 15))
         
         # 限定投注金额
@@ -1490,7 +1520,7 @@ class JQC4GameFilter:
                        value=False).pack(anchor=tk.W, pady=(10, 0))
         
         # 选注范围设置
-        scope_frame = ttk.LabelFrame(main_frame, text="选注范围(S)", padding="15")
+        scope_frame = ttk.LabelFrame(main_frame, text="选注范围(S)", padding="15", style='Card.TLabelframe')
         scope_frame.pack(fill=tk.X, pady=(0, 25))
         
         self.selection_method_var = tk.StringVar(value="random")
