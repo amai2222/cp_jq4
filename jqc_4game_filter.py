@@ -857,10 +857,84 @@ class JQC4GameFilter:
         
         ttk.Button(btn_frame, text="频率统计", command=lambda: self._show_frequency_stats_new(freq_vars, freq_window), 
                   style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="保存频率", command=lambda: self._save_frequency_settings(freq_vars, freq_window), 
+                  style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="导入频率", command=lambda: self._load_frequency_settings(freq_vars, freq_window), 
+                  style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btn_frame, text="应用缩水", command=lambda: self._apply_frequency_filter_new(freq_vars, freq_window), 
                   style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btn_frame, text="关闭", command=freq_window.destroy, 
                   style='Clear.TButton').pack(side=tk.RIGHT)
+    
+    def _save_frequency_settings(self, freq_vars, parent_window):
+        """保存频率设置到文件"""
+        try:
+            from tkinter import filedialog
+            import json
+            
+            # 选择保存文件
+            filename = filedialog.asksaveasfilename(
+                parent=parent_window,
+                title="保存频率设置",
+                defaultextension=".json",
+                filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
+            )
+            
+            if not filename:
+                return
+            
+            # 收集所有频率设置
+            settings = {}
+            for game_idx in range(4):
+                settings[f"game_{game_idx}"] = {}
+                for result_idx, result_name in enumerate(["胜", "平", "负"]):
+                    settings[f"game_{game_idx}"][result_name] = {}
+                    for score, var in freq_vars[game_idx][result_idx].items():
+                        settings[f"game_{game_idx}"][result_name][score] = var.get()
+            
+            # 保存到文件
+            with open(filename, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, ensure_ascii=False, indent=2)
+            
+            messagebox.showinfo("保存成功", f"频率设置已保存到：\n{filename}", parent=parent_window)
+            
+        except Exception as e:
+            messagebox.showerror("保存失败", f"保存频率设置时出错：\n{e}", parent=parent_window)
+    
+    def _load_frequency_settings(self, freq_vars, parent_window):
+        """从文件导入频率设置"""
+        try:
+            from tkinter import filedialog
+            import json
+            
+            # 选择文件
+            filename = filedialog.askopenfilename(
+                parent=parent_window,
+                title="导入频率设置",
+                filetypes=[("JSON文件", "*.json"), ("所有文件", "*.*")]
+            )
+            
+            if not filename:
+                return
+            
+            # 读取文件
+            with open(filename, 'r', encoding='utf-8') as f:
+                settings = json.load(f)
+            
+            # 应用设置
+            for game_idx in range(4):
+                game_key = f"game_{game_idx}"
+                if game_key in settings:
+                    for result_idx, result_name in enumerate(["胜", "平", "负"]):
+                        if result_name in settings[game_key]:
+                            for score, value in settings[game_key][result_name].items():
+                                if score in freq_vars[game_idx][result_idx]:
+                                    freq_vars[game_idx][result_idx][score].set(value)
+            
+            messagebox.showinfo("导入成功", f"频率设置已从以下文件导入：\n{filename}", parent=parent_window)
+            
+        except Exception as e:
+            messagebox.showerror("导入失败", f"导入频率设置时出错：\n{e}", parent=parent_window)
     
     def _update_frequency_display_new(self, freq_vars, valid_data, summary_text):
         """更新频率显示（新版本：胜平负分区显示比分）"""
