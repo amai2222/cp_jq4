@@ -537,7 +537,7 @@ class JQC4GameFilter:
                 else:  # 删除
                     # 删除符合条件的注，保留不符合条件的注
                     if not meets_conditions:
-                        self.filtered_data.append(bet)
+                    self.filtered_data.append(bet)
             
             # 显示结果
             self._display_results()
@@ -565,21 +565,21 @@ class JQC4GameFilter:
             # 检查是否有任何胜平负选项被选中
             wdl_selected = any(self.wdl_vars[i][result].get() for result in ['胜', '平', '负'])
             if wdl_selected:  # 如果有选项被选中
-                home_goals, away_goals = games[i]
-                result = self._get_wdl_result(home_goals, away_goals)
+                    home_goals, away_goals = games[i]
+                    result = self._get_wdl_result(home_goals, away_goals)
                 # 检查结果是否在选中的选项中
                 if not self.wdl_vars[i][result].get():
-                    return False
+                        return False
         
         # 检查大小球过滤
         for i in range(4):
-            ou_condition = self.ou_vars[i].get()
+                ou_condition = self.ou_vars[i].get()
             if ou_condition != "任意":  # 如果选择了具体的大小球条件
-                home_goals, away_goals = games[i]
-                total_goals = home_goals + away_goals
-                ou_result = "大球" if total_goals >= 3 else "小球"
-                if ou_result != ou_condition:
-                    return False
+                    home_goals, away_goals = games[i]
+                    total_goals = home_goals + away_goals
+                    ou_result = "大球" if total_goals >= 3 else "小球"
+                    if ou_result != ou_condition:
+                        return False
         
         return True
     
@@ -857,6 +857,8 @@ class JQC4GameFilter:
         
         ttk.Button(btn_frame, text="频率统计", command=lambda: self._show_frequency_stats_new(freq_vars, freq_window), 
                   style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Button(btn_frame, text="智能分配", command=lambda: self._smart_allocation(freq_vars, freq_window), 
+                  style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btn_frame, text="保存频率", command=lambda: self._save_frequency_settings(freq_vars, freq_window), 
                   style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btn_frame, text="导入频率", command=lambda: self._load_frequency_settings(freq_vars, freq_window), 
@@ -865,6 +867,175 @@ class JQC4GameFilter:
                   style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
         ttk.Button(btn_frame, text="关闭", command=freq_window.destroy, 
                   style='Clear.TButton').pack(side=tk.RIGHT)
+    
+    def _smart_allocation(self, freq_vars, parent_window):
+        """智能分配功能 - 基于概率科学分配投注"""
+        try:
+            # 创建智能分配窗口
+            alloc_window = tk.Toplevel(parent_window)
+            alloc_window.title("智能分配")
+            alloc_window.geometry("600x500")
+            alloc_window.resizable(True, True)
+            
+            # 居中显示
+            alloc_window.update_idletasks()
+            x = (alloc_window.winfo_screenwidth() // 2) - (600 // 2)
+            y = (alloc_window.winfo_screenheight() // 2) - (500 // 2)
+            alloc_window.geometry(f'600x500+{x}+{y}')
+            
+            # 主框架
+            main_frame = ttk.Frame(alloc_window, padding="20")
+            main_frame.pack(fill=tk.BOTH, expand=True)
+            
+            # 标题
+            title_label = ttk.Label(main_frame, text="智能分配 - 基于概率科学分配", 
+                                   font=('Microsoft YaHei UI', 14, 'bold'))
+            title_label.pack(pady=(0, 20))
+            
+            # 说明
+            info_text = """
+智能分配原理：
+1. 基于您设定的概率进行科学分配
+2. 计算每种组合的期望值
+3. 优先保留高期望值的组合
+4. 自动优化投注数量
+            """
+            info_label = ttk.Label(main_frame, text=info_text, 
+                                  font=('Microsoft YaHei UI', 10))
+            info_label.pack(pady=(0, 20))
+            
+            # 分配策略选择
+            strategy_frame = ttk.LabelFrame(main_frame, text="分配策略", padding="10")
+            strategy_frame.pack(fill=tk.X, pady=(0, 20))
+            
+            self.strategy_var = tk.StringVar(value="期望值优先")
+            strategies = ["期望值优先", "概率均衡", "风险控制", "自定义比例"]
+            
+            for i, strategy in enumerate(strategies):
+                ttk.Radiobutton(strategy_frame, text=strategy, 
+                               variable=self.strategy_var, value=strategy).grid(
+                    row=i//2, column=i%2, sticky=tk.W, padx=10, pady=5)
+            
+            # 目标投注数设置
+            target_frame = ttk.LabelFrame(main_frame, text="目标设置", padding="10")
+            target_frame.pack(fill=tk.X, pady=(0, 20))
+            
+            ttk.Label(target_frame, text="目标投注数：").pack(side=tk.LEFT)
+            self.target_bets_var = tk.StringVar(value="1000")
+            target_entry = ttk.Entry(target_frame, textvariable=self.target_bets_var, width=10)
+            target_entry.pack(side=tk.LEFT, padx=(5, 20))
+            
+            ttk.Label(target_frame, text="最小期望值：").pack(side=tk.LEFT)
+            self.min_expectation_var = tk.StringVar(value="0.01")
+            min_exp_entry = ttk.Entry(target_frame, textvariable=self.min_expectation_var, width=10)
+            min_exp_entry.pack(side=tk.LEFT, padx=(5, 0))
+            
+            # 按钮区域
+            btn_frame = ttk.Frame(main_frame)
+            btn_frame.pack(fill=tk.X, pady=(20, 0))
+            
+            ttk.Button(btn_frame, text="开始智能分配", 
+                      command=lambda: self._execute_smart_allocation(freq_vars, alloc_window),
+                      style='Filter.TButton').pack(side=tk.LEFT, padx=(0, 10))
+            ttk.Button(btn_frame, text="关闭", 
+                      command=alloc_window.destroy,
+                      style='Clear.TButton').pack(side=tk.RIGHT)
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"创建智能分配窗口失败：{e}")
+    
+    def _execute_smart_allocation(self, freq_vars, alloc_window):
+        """执行智能分配"""
+        try:
+            # 获取当前数据
+            if self.filtered_data:
+                valid_data = self.filtered_data.copy()
+                data_source = "过滤结果"
+            elif self.betting_data:
+                valid_data = self.betting_data.copy()
+                data_source = "投注区数据"
+            else:
+                messagebox.showwarning("警告", "没有可用的数据", parent=alloc_window)
+                return
+            
+            # 获取用户设置
+            target_bets = int(self.target_bets_var.get())
+            min_expectation = float(self.min_expectation_var.get())
+            strategy = self.strategy_var.get()
+            
+            # 计算每种投注组合的期望值
+            bet_expectations = []
+            
+            for bet in valid_data:
+                expectation = 1.0
+                bet_info = []
+                
+                for game_idx in range(4):
+                    home_goals = int(bet[game_idx * 2])
+                    away_goals = int(bet[game_idx * 2 + 1])
+                    score = f"{home_goals}:{away_goals}"
+                    
+                    var_key = f"game_{game_idx}_{score}"
+                    if var_key in freq_vars:
+                        try:
+                            prob = float(freq_vars[var_key].get()) / 100.0
+                            expectation *= prob
+                            bet_info.append(f"第{game_idx+1}场{score}({prob:.2%})")
+                        except ValueError:
+                            expectation *= 0.0
+                            bet_info.append(f"第{game_idx+1}场{score}(0%)")
+                    else:
+                        expectation *= 0.0
+                        bet_info.append(f"第{game_idx+1}场{score}(0%)")
+                
+                bet_expectations.append({
+                    'bet': bet,
+                    'expectation': expectation,
+                    'info': ' × '.join(bet_info)
+                })
+            
+            # 根据策略排序
+            if strategy == "期望值优先":
+                bet_expectations.sort(key=lambda x: x['expectation'], reverse=True)
+            elif strategy == "概率均衡":
+                # 按概率分布均匀选择
+                bet_expectations.sort(key=lambda x: x['expectation'], reverse=True)
+                # 这里可以添加更复杂的均衡算法
+            elif strategy == "风险控制":
+                # 选择中等期望值的投注，避免过高或过低
+                bet_expectations.sort(key=lambda x: abs(x['expectation'] - 0.1), reverse=False)
+            
+            # 筛选符合条件的投注
+            selected_bets = []
+            for bet_data in bet_expectations:
+                if bet_data['expectation'] >= min_expectation:
+                    selected_bets.append(bet_data)
+                    if len(selected_bets) >= target_bets:
+                        break
+            
+            # 更新结果
+            self.filtered_data = [bet_data['bet'] for bet_data in selected_bets]
+            self._display_results()
+            
+            # 显示分配结果
+            result_text = f"智能分配完成！\n\n"
+            result_text += f"数据源：{data_source}\n"
+            result_text += f"原始投注：{len(valid_data)} 条\n"
+            result_text += f"分配结果：{len(selected_bets)} 条\n"
+            result_text += f"分配策略：{strategy}\n"
+            result_text += f"最小期望值：{min_expectation}\n\n"
+            
+            if selected_bets:
+                result_text += "前5个高期望值投注：\n"
+                for i, bet_data in enumerate(selected_bets[:5]):
+                    result_text += f"{i+1}. {bet_data['bet']} (期望值: {bet_data['expectation']:.4f})\n"
+                    result_text += f"   {bet_data['info']}\n"
+            
+            messagebox.showinfo("智能分配完成", result_text, parent=alloc_window)
+            alloc_window.destroy()
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"智能分配失败：{e}", parent=alloc_window)
     
     def _save_frequency_settings(self, freq_vars, parent_window):
         """保存频率设置到文件"""
@@ -1340,7 +1511,7 @@ class JQC4GameFilter:
             messagebox.showerror("错误", f"统计失败：{e}", parent=parent_window)
     
     def _apply_frequency_filter_new(self, freq_vars, parent_window):
-        """应用频率过滤（新版本：按比分过滤）"""
+        """应用频率过滤（科学缩水：基于期望值过滤）"""
         try:
             # 保存当前状态到历史记录
             self._save_to_history()
@@ -1356,7 +1527,7 @@ class JQC4GameFilter:
                 messagebox.showwarning("警告", "没有可用的数据", parent=parent_window)
                 return
             
-            # 获取频率设置
+            # 获取频率设置（用户设置的概率）
             freq_settings = {}
             for game_idx in range(4):
                 for result_idx in range(3):
@@ -1369,172 +1540,115 @@ class JQC4GameFilter:
                             except ValueError:
                                 freq_settings[var_key] = 0.0
             
-            # 应用比分频率过滤和扩充
-            filtered_data = []
+            # 计算每种投注组合的期望值
+            bet_expectations = []
             
-            # 首先过滤掉频率为0的比分
             for bet in valid_data:
-                should_include = True
+                expectation = 1.0
+                bet_info = []
+                has_zero_prob = False
                 
                 for game_idx in range(4):
-                    # 解析该场的主客队进球数
                     home_goals = int(bet[game_idx * 2])
                     away_goals = int(bet[game_idx * 2 + 1])
-                    
-                    # 构造比分字符串
                     score = f"{home_goals}:{away_goals}"
                     
                     var_key = f"game_{game_idx}_{score}"
                     if var_key in freq_settings:
-                        if freq_settings[var_key] == 0:
-                            should_include = False
-                            break
-                
-                if should_include:
-                    filtered_data.append(bet)
-            
-            # 然后根据频率设置扩充数据
-            # 如果用户增加了某些比分的频率，我们需要扩充这些比分的数据
-            expanded_data = []
-            
-            # 统计当前各比分的数量
-            score_counts = {}
-            for game_idx in range(4):
-                score_counts[game_idx] = {}
-            
-            for bet in filtered_data:
-                for game_idx in range(4):
-                    home_goals = int(bet[game_idx * 2])
-                    away_goals = int(bet[game_idx * 2 + 1])
-                    score = f"{home_goals}:{away_goals}"
-                    
-                    if score in score_counts[game_idx]:
-                        score_counts[game_idx][score] += 1
+                        prob = freq_settings[var_key] / 100.0
+                        expectation *= prob
+                        bet_info.append(f"第{game_idx+1}场{score}({prob:.2%})")
+                        if prob == 0:
+                            has_zero_prob = True
                     else:
-                        score_counts[game_idx][score] = 1
+                        expectation *= 0.0
+                        bet_info.append(f"第{game_idx+1}场{score}(0%)")
+                        has_zero_prob = True
+                
+                # 只保留期望值大于0的投注（即不包含概率为0的比分）
+                if not has_zero_prob and expectation > 0:
+                    bet_expectations.append({
+                        'bet': bet,
+                        'expectation': expectation,
+                        'info': ' × '.join(bet_info)
+                    })
             
-            # 计算需要扩充的比分
-            total_bets = len(filtered_data)
-            for game_idx in range(4):
-                for result_idx in range(3):
-                    scores = self._get_scores_by_result(result_idx)
-                    for score in scores:
-                        var_key = f"game_{game_idx}_{score}"
-                        if var_key in freq_settings:
-                            target_freq = freq_settings[var_key]
-                            if target_freq > 0:
-                                # 计算目标数量
-                                target_count = int((target_freq / 100.0) * total_bets)
-                                current_count = score_counts[game_idx].get(score, 0)
-                                
-                                # 如果需要扩充
-                                if target_count > current_count:
-                                    # 从原始数据中寻找该比分的投注进行扩充
-                                    needed = target_count - current_count
-                                    found = 0
-                                    
-                                    # 从投注区数据中寻找该比分的投注
-                                    for bet in self.betting_data:
-                                        if found >= needed:
-                                            break
-                                        
-                                        bet_home_goals = int(bet[game_idx * 2])
-                                        bet_away_goals = int(bet[game_idx * 2 + 1])
-                                        bet_score = f"{bet_home_goals}:{bet_away_goals}"
-                                        
-                                        if bet_score == score and bet not in filtered_data:
-                                            # 检查这个投注是否满足其他条件
-                                            other_games_ok = True
-                                            for other_game_idx in range(4):
-                                                if other_game_idx != game_idx:
-                                                    other_var_key = f"game_{other_game_idx}_{bet[other_game_idx * 2]}:{bet[other_game_idx * 2 + 1]}"
-                                                    if other_var_key in freq_settings and freq_settings[other_var_key] == 0:
-                                                        other_games_ok = False
-                                                        break
-                                            
-                                            if other_games_ok:
-                                                filtered_data.append(bet)
-                                                found += 1
-                                
-                                # 如果需要缩水（当前数量超过目标数量）
-                                elif target_count < current_count:
-                                    # 随机移除多余的该比分投注
-                                    excess = current_count - target_count
-                                    removed = 0
-                                    
-                                    # 找到所有该比分的投注
-                                    bets_to_remove = []
-                                    for bet in filtered_data:
-                                        if removed >= excess:
-                                            break
-                                        
-                                        bet_home_goals = int(bet[game_idx * 2])
-                                        bet_away_goals = int(bet[game_idx * 2 + 1])
-                                        bet_score = f"{bet_home_goals}:{bet_away_goals}"
-                                        
-                                        if bet_score == score:
-                                            bets_to_remove.append(bet)
-                                            removed += 1
-                                    
-                                    # 从filtered_data中移除这些投注
-                                    for bet in bets_to_remove:
-                                        if bet in filtered_data:
-                                            filtered_data.remove(bet)
+            # 按期望值排序（从高到低）
+            bet_expectations.sort(key=lambda x: x['expectation'], reverse=True)
             
-            # 最终结果
-            final_data = filtered_data
+            # 计算期望值阈值（保留前80%的投注，或用户可设置）
+            if bet_expectations:
+                # 计算期望值分布
+                expectations = [bet['expectation'] for bet in bet_expectations]
+                max_exp = max(expectations)
+                min_exp = min(expectations)
+                avg_exp = sum(expectations) / len(expectations)
+                
+                # 设置阈值：保留期望值大于平均值50%的投注
+                threshold = avg_exp * 0.5
+                
+                # 筛选高期望值投注
+                selected_bets = []
+                for bet_data in bet_expectations:
+                    if bet_data['expectation'] >= threshold:
+                        selected_bets.append(bet_data['bet'])
+                
+                # 如果筛选结果太少，降低阈值
+                if len(selected_bets) < len(valid_data) * 0.1:  # 如果少于10%
+                    threshold = avg_exp * 0.1
+                    selected_bets = []
+                    for bet_data in bet_expectations:
+                        if bet_data['expectation'] >= threshold:
+                            selected_bets.append(bet_data['bet'])
+                
+                # 如果还是太少，保留前20%
+                if len(selected_bets) < len(valid_data) * 0.05:  # 如果少于5%
+                    selected_bets = [bet_data['bet'] for bet_data in bet_expectations[:max(1, len(bet_expectations)//5)]]
+            else:
+                selected_bets = []
             
             # 更新结果
-            self.filtered_data = final_data
+            self.filtered_data = selected_bets
             self._display_results()
             
             # 更新数据统计
-            self.result_stats.config(text=f"过滤结果：{len(final_data)} 条")
+            self.result_stats.config(text=f"过滤结果：{len(selected_bets)} 条")
             
             # 显示完成提示和详细统计
             original_count = len(valid_data)
-            filtered_count = len(final_data)
+            filtered_count = len(selected_bets)
             reduction_rate = ((original_count - filtered_count) / original_count * 100) if original_count > 0 else 0
             
-            # 统计被过滤掉的比分
-            filtered_scores = []
-            for game_idx in range(4):
-                for result_idx in range(3):
-                    scores = self._get_scores_by_result(result_idx)
-                    for score in scores:
-                        var_key = f"game_{game_idx}_{score}"
-                        if var_key in freq_settings and freq_settings[var_key] == 0:
-                            filtered_scores.append(f"第{game_idx + 1}场{score}")
+            # 构建详细报告
+            detail_text = f"科学缩水完成！\n\n"
+            detail_text += f"数据源：{data_source}\n"
+            detail_text += f"原始投注：{original_count} 条\n"
+            detail_text += f"缩水结果：{filtered_count} 条\n"
+            detail_text += f"缩水比例：{reduction_rate:.1f}%\n\n"
             
-            # 计算扩充情况
-            if filtered_count > original_count:
-                expansion_rate = ((filtered_count - original_count) / original_count * 100) if original_count > 0 else 0
-                detail_text = f"频率调整完成！\n\n"
-                detail_text += f"数据源：{data_source}\n"
-                detail_text += f"原始数据：{original_count} 条\n"
-                detail_text += f"调整结果：{filtered_count} 条\n"
-                detail_text += f"扩充比例：+{expansion_rate:.1f}%\n\n"
+            if bet_expectations:
+                detail_text += f"期望值分析：\n"
+                detail_text += f"最高期望值：{max_exp:.6f}\n"
+                detail_text += f"最低期望值：{min_exp:.6f}\n"
+                detail_text += f"平均期望值：{avg_exp:.6f}\n"
+                detail_text += f"筛选阈值：{threshold:.6f}\n\n"
+                
+                if selected_bets:
+                    detail_text += "前5个高期望值投注：\n"
+                    for i, bet_data in enumerate(bet_expectations[:5]):
+                        if bet_data['bet'] in selected_bets:
+                            detail_text += f"{i+1}. {bet_data['bet']} (期望值: {bet_data['expectation']:.6f})\n"
+                            detail_text += f"   {bet_data['info']}\n"
             else:
-                detail_text = f"频率缩水完成！\n\n"
-                detail_text += f"数据源：{data_source}\n"
-                detail_text += f"原始数据：{original_count} 条\n"
-                detail_text += f"筛选结果：{filtered_count} 条\n"
-                detail_text += f"缩水比例：{reduction_rate:.1f}%\n\n"
+                detail_text += "没有符合条件的投注（所有投注都包含概率为0的比分）\n"
             
-            if filtered_scores:
-                detail_text += f"被过滤的比分：\n"
-                for score in filtered_scores[:10]:  # 最多显示10个
-                    detail_text += f"• {score}\n"
-                if len(filtered_scores) > 10:
-                    detail_text += f"... 等{len(filtered_scores)}个比分"
-            
-            messagebox.showinfo("频率缩水完成", detail_text, parent=parent_window)
+            messagebox.showinfo("科学缩水完成", detail_text, parent=parent_window)
             
             # 关闭窗口
             parent_window.destroy()
             
         except Exception as e:
-            messagebox.showerror("错误", f"频率过滤失败：{e}", parent=parent_window)
+            messagebox.showerror("错误", f"科学缩水失败：{e}", parent=parent_window)
     
     def _save_to_history(self):
         """保存当前状态到历史记录"""
