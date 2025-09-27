@@ -8,18 +8,21 @@ import traceback
 class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("网易彩票数据获取工具 (v10.1 - 错误修复版)")
+        self.title("网易彩票数据获取工具 (v12.0 - 自动刷新终版)")
         self.geometry("950x600")
 
         # --- API 配置 ---
-        self.API_GET_CURRENT_ISSUE = "https://sports.163.com/caipiao/api/web/jc/queryCurrentPeriod.html?gameEn={}"
+        # 修正：北单(bjdc)的API也改为按日期(days)查询
         self.API_MATCH_LIST = {
             "jczq": "https://sports.163.com/caipiao/api/web/match/list/jingcai/matchList/1?days={}",
             "sfc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/sfc?degree={}",
-            "bjdc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/bjdc?degree={}"
+            "bjdc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/bjdc?days={}"
         }
+        self.API_GET_CURRENT_ISSUE = "https://sports.163.com/caipiao/api/web/jc/queryCurrentPeriod.html?gameEn={}"
         self.API_LIVE_SCORES = "https://sports.163.com/caipiao/api/web/match/list/getMatchInfoList/1?matchInfoIds={}"
         
+        self.active_timer = None # 用于存储当前活动的after任务ID
+
         self.create_menu()
 
         main_frame = ttk.Frame(self, padding="10")
@@ -28,7 +31,7 @@ class ScoreApp(tk.Tk):
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
-        self.tabs_info = {"竞彩": {"type": "jczq"}, "胜负彩": {"type": "sfc"}, "北单": {"type": "bjdc"}}
+        self.tabs_info = {"竞彩": {"type": "jczq"}, "北单": {"type": "bjdc"}, "胜负彩": {"type": "sfc"}}
         for name, info in self.tabs_info.items():
             frame = self.create_tab(self.notebook, name, info["type"])
             self.notebook.add(frame, text=name)
@@ -37,7 +40,7 @@ class ScoreApp(tk.Tk):
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
-        self.after(200, self.on_tab_change)
+        self.after(200, self.initial_load)
 
     def create_menu(self):
         menu_bar = tk.Menu(self)
@@ -48,113 +51,146 @@ class ScoreApp(tk.Tk):
 
     def create_tab(self, parent, name, lottery_type):
         frame = ttk.Frame(parent, padding="10")
-        
         control_frame = ttk.Frame(frame)
         control_frame.pack(fill=tk.X, pady=5)
         
-        label_text = "比赛日期:" if lottery_type == 'jczq' else "期号:"
+        # 修正：北单也使用日期逻辑
+        is_date_based = lottery_type in ['jczq', 'bjdc']
+        label_text = "比赛日期:" if is_date_based else "期号:"
         issue_label = ttk.Label(control_frame, text=label_text)
         issue_label.pack(side=tk.LEFT, padx=(0, 5))
         
         issue_var = tk.StringVar()
         
-        if lottery_type == 'jczq':
+        if is_date_based:
             prev_day_button = ttk.Button(control_frame, text="前一天", command=lambda: self.change_date(-1))
             prev_day_button.pack(side=tk.LEFT)
 
         issue_entry = ttk.Entry(control_frame, textvariable=issue_var, width=15, justify='center')
         issue_entry.pack(side=tk.LEFT, padx=5)
 
-        if lottery_type == 'jczq':
+        if is_date_based:
             next_day_button = ttk.Button(control_frame, text="后一天", command=lambda: self.change_date(1))
             next_day_button.pack(side=tk.LEFT)
 
-        fetch_button = ttk.Button(control_frame, text="刷新", 
-                                  command=lambda: self.start_fetch_thread(lottery_type, issue_var))
+        fetch_button = ttk.Button(control_frame, text="刷新", command=lambda: self.start_fetch_thread(lottery_type, issue_var, is_manual=True))
         fetch_button.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # 新增：自动刷新复选框
+        auto_refresh_var = tk.BooleanVar(value=True)
+        auto_refresh_check = ttk.Checkbutton(control_frame, text="每分钟自动刷新", variable=auto_refresh_var, command=self.handle_auto_refresh_toggle)
+        auto_refresh_check.pack(side=tk.LEFT, padx=(10,0))
 
+        # ... (Treeview代码保持不变) ...
         columns = ('match_num', 'home_team', 'vs', 'away_team', 'score', 'half_score', 'status')
         tree = ttk.Treeview(frame, columns=columns, show='headings')
-        
-        tree.heading('match_num', text='场次')
-        tree.heading('home_team', text='主队')
-        tree.heading('vs', text='')
-        tree.heading('away_team', text='客队')
-        tree.heading('score', text='比分')
-        tree.heading('half_score', text='半场')
-        tree.heading('status', text='状态')
-        
-        tree.column('match_num', width=80, anchor=tk.CENTER)
-        tree.column('home_team', width=150, anchor=tk.CENTER)
-        tree.column('vs', width=30, anchor=tk.CENTER)
-        tree.column('away_team', width=150, anchor=tk.CENTER)
-        tree.column('score', width=100, anchor=tk.CENTER)
-        tree.column('half_score', width=80, anchor=tk.CENTER)
-        tree.column('status', width=100, anchor=tk.CENTER)
-        
-        tree.tag_configure('in_progress', foreground='red')
-        tree.tag_configure('finished', foreground='black')
-        tree.tag_configure('not_started', foreground='gray')
-        
+        tree.heading('match_num', text='场次'); tree.heading('home_team', text='主队'); tree.heading('vs', text=''); tree.heading('away_team', text='客队'); tree.heading('score', text='比分'); tree.heading('half_score', text='半场'); tree.heading('status', text='状态')
+        tree.column('match_num', width=80, anchor=tk.CENTER); tree.column('home_team', width=150, anchor=tk.CENTER); tree.column('vs', width=30, anchor=tk.CENTER); tree.column('away_team', width=150, anchor=tk.CENTER); tree.column('score', width=100, anchor=tk.CENTER); tree.column('half_score', width=80, anchor=tk.CENTER); tree.column('status', width=100, anchor=tk.CENTER)
+        tree.tag_configure('in_progress', foreground='red'); tree.tag_configure('finished', foreground='black'); tree.tag_configure('not_started', foreground='gray')
         tree.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        self.tabs_info[name]['issue_var'] = issue_var
-        self.tabs_info[name]['tree'] = tree
-        
-        threading.Thread(target=self.update_issue, args=(lottery_type, issue_var), daemon=True).start()
+        self.tabs_info[name].update({
+            'issue_var': issue_var,
+            'tree': tree,
+            'auto_refresh_var': auto_refresh_var
+        })
         
         return frame
+    
+    def handle_auto_refresh_toggle(self):
+        """当用户点击复选框时触发"""
+        self.cancel_timer() # 先取消旧的计时器
+        
+        current_tab_info = self.get_current_tab_info()
+        if current_tab_info and current_tab_info['auto_refresh_var'].get():
+            # 如果是勾选状态，立即开始下一次调度
+            self.schedule_refresh()
+
+    def schedule_refresh(self):
+        """调度下一次自动刷新"""
+        self.cancel_timer() # 确保只有一个计时器在运行
+
+        current_tab_info = self.get_current_tab_info()
+        if current_tab_info and current_tab_info['auto_refresh_var'].get():
+            # 获取当前标签页的信息并启动刷新线程
+            lottery_type = current_tab_info['type']
+            issue_var = current_tab_info['issue_var']
+            
+            # 使用 self.after 来安排下一次执行
+            self.active_timer = self.after(60000, lambda: self.start_fetch_thread(lottery_type, issue_var))
+    
+    def cancel_timer(self):
+        """取消当前活动的计时器"""
+        if self.active_timer:
+            self.after_cancel(self.active_timer)
+            self.active_timer = None
+            
+    def get_current_tab_info(self):
+        """获取当前激活的标签页的相关信息"""
+        try:
+            current_tab_name = self.notebook.tab(self.notebook.select(), "text")
+            return self.tabs_info[current_tab_name]
+        except (tk.TclError, KeyError):
+            return None
+
+    def initial_load(self):
+        for name, info in self.tabs_info.items():
+            if not info['issue_var'].get():
+                issue = self.get_initial_issue(info['type'])
+                if issue: info['issue_var'].set(issue)
+        self.on_tab_change()
+
+    def get_initial_issue(self, lottery_type):
+        # 修正：北单也应用智能日期逻辑
+        if lottery_type in ["jczq", "bjdc"]:
+            now = datetime.now()
+            if 0 <= now.hour < 12: return (now - timedelta(days=1)).strftime('%Y-%m-%d')
+            else: return now.strftime('%Y-%m-%d')
+        else:
+            return self.get_current_issue_from_api(lottery_type)
 
     def change_date(self, days_delta):
-        try:
-            current_tab_name = self.notebook.tab(self.notebook.select(), "text")
-            if current_tab_name != "竞彩":
-                return
-            
-            info = self.tabs_info[current_tab_name]
-            issue_var = info['issue_var']
-            
-            current_date_str = issue_var.get()
-            current_date = datetime.strptime(current_date_str, '%Y-%m-%d')
-            
-            new_date = current_date + timedelta(days=days_delta)
-            new_date_str = new_date.strftime('%Y-%m-%d')
-            
-            issue_var.set(new_date_str)
-            self.start_fetch_thread(info["type"], issue_var)
-            
-        except (ValueError, KeyError):
-            today_str = datetime.now().strftime('%Y-%m-%d')
-            self.tabs_info["竞彩"]['issue_var'].set(today_str)
-            self.start_fetch_thread(self.tabs_info["竞彩"]["type"], self.tabs_info["竞彩"]['issue_var'])
-            messagebox.showwarning("提示", "日期格式错误，已重置为今天。")
+        current_tab_info = self.get_current_tab_info()
+        if not current_tab_info: return
+        
+        # 修正：确保此功能只对日期型标签页生效
+        if current_tab_info['type'] not in ['jczq', 'bjdc']: return
 
+        try:
+            issue_var = current_tab_info['issue_var']
+            current_date = datetime.strptime(issue_var.get(), '%Y-%m-%d')
+            new_date = current_date + timedelta(days=days_delta)
+            issue_var.set(new_date.strftime('%Y-%m-%d'))
+            self.start_fetch_thread(current_tab_info["type"], issue_var, is_manual=True)
+        except (ValueError, KeyError) as e:
+            messagebox.showwarning("提示", "日期格式错误或出现内部错误,将重置为今天。")
+            issue_var.set(datetime.now().strftime('%Y-%m-%d'))
+            self.start_fetch_thread(current_tab_info["type"], issue_var, is_manual=True)
+            print(f"Error in change_date: {e}")
 
     def on_tab_change(self, event=None):
-        try:
-            current_tab_name = self.notebook.tab(self.notebook.select(), "text")
-            info = self.tabs_info[current_tab_name]
-            self.start_fetch_thread(info["type"], info['issue_var'])
-        except (tk.TclError, KeyError):
-            pass
+        self.cancel_timer() # 切换标签时，总是取消旧的计时器
+        current_tab_info = self.get_current_tab_info()
+        if current_tab_info:
+            self.start_fetch_thread(current_tab_info["type"], current_tab_info['issue_var'], is_manual=True)
 
-    def update_issue(self, lottery_type, issue_var):
-        current_issue = issue_var.get()
-        if not current_issue:
-            issue = self.get_current_issue(lottery_type)
-            if issue:
-                self.after(0, issue_var.set, issue)
+    def start_fetch_thread(self, lottery_type, issue_var, is_manual=False):
+        if is_manual: # 如果是手动触发（点击按钮、切换标签），则取消计时器
+            self.cancel_timer()
 
-    def start_fetch_thread(self, lottery_type, issue_var):
         issue = issue_var.get()
-        if not issue and lottery_type != 'jczq':
-            messagebox.showwarning("提示", "请输入有效的期号！")
-            return
-        tab_name = self.notebook.tab(self.notebook.select(), "text")
-        tree_widget = self.tabs_info[tab_name]['tree']
-        threading.Thread(target=self.fetch_and_display, 
-                         args=(lottery_type, issue, tree_widget), 
-                         daemon=True).start()
+        if not issue:
+            issue = self.get_initial_issue(lottery_type)
+            if not issue:
+                messagebox.showwarning("提示", "无法获取期号/日期，请输入后刷新。")
+                return
+            else:
+                issue_var.set(issue)
+        
+        current_tab_info = self.get_current_tab_info()
+        if current_tab_info:
+            tree_widget = current_tab_info['tree']
+            threading.Thread(target=self.fetch_and_display, args=(lottery_type, issue, tree_widget), daemon=True).start()
 
     def fetch_and_display(self, lottery_type, issue, tree_widget):
         self.update_status(f"正在获取 {issue} 的数据...")
@@ -162,119 +198,90 @@ class ScoreApp(tk.Tk):
         self.after(0, self.update_ui_with_results, tree_widget, result_data)
 
     def update_ui_with_results(self, tree, data):
-        for i in tree.get_children():
-            tree.delete(i)
+        # 只有当数据显示的树状图是当前激活的标签页时，才更新UI和调度刷新
+        current_tab_info = self.get_current_tab_info()
+        if not current_tab_info or tree != current_tab_info['tree']:
+            return # 如果不是当前页面的数据返回了，则忽略
+
+        for i in tree.get_children(): tree.delete(i)
+        
         if isinstance(data, str):
-            messagebox.showerror("错误", data)
-            self.update_status("数据获取失败！")
-            return
-        for row_data in data:
-            tree.insert('', 'end', values=row_data['values'], tags=(row_data['tag'],))
-        self.update_status("数据刷新成功！")
+            if "Traceback" in data: messagebox.showerror("发生未知错误", data)
+            else: messagebox.showinfo("提示", data)
+            self.update_status("数据获取失败或无数据！")
+        else:
+            for row_data in data: tree.insert('', 'end', values=row_data['values'], tags=(row_data['tag'],))
+            self.update_status("数据刷新成功！")
+        
+        # 数据更新完成后，开始或继续自动刷新调度
+        self.schedule_refresh()
 
     def update_status(self, message):
         self.after(0, self.status_bar.config, {'text': message})
         
     def get_status_info(self, live_score_details):
-        if not live_score_details:
-            return "未开赛", "not_started"
-        status_text = live_score_details.get('status', '未知')
-        status_enum = live_score_details.get('statusEnum')
-        if status_enum in [2, 3, 4] or '′' in status_text:
-            category = "in_progress"
-        elif status_enum in [8, 5, 6, 7]:
-            category = "finished"
-        else:
-            category = "not_started"
+        if not live_score_details: return "未开赛", "not_started"
+        status_text = live_score_details.get('status', '未知'); status_enum = live_score_details.get('statusEnum')
+        if status_enum in [2, 3, 4] or '′' in status_text: category = "in_progress"
+        elif status_enum in [8, 5, 6, 7]: category = "finished"
+        else: category = "not_started"
         if status_enum == 3: status_text = "中场"
         elif status_enum == 8: status_text = "完"
         return status_text, category
 
-    def get_current_issue(self, lottery_type):
-        if lottery_type == "jczq":
-            return datetime.now().strftime('%Y-%m-%d')
+    def get_current_issue_from_api(self, lottery_type):
         try:
             url = self.API_GET_CURRENT_ISSUE.format(lottery_type)
-            response = requests.get(url, timeout=5)
-            response.raise_for_status()
+            response = requests.get(url, timeout=5); response.raise_for_status()
             data = response.json()
-            if data.get('code') == 200:
-                return data.get('data', {}).get('periodName')
-        except Exception:
-            return None
+            if data.get('code') == 200: return data.get('data', {}).get('periodName')
+        except Exception: return None
 
     def fetch_all_data(self, lottery_type, issue):
         try:
-            if lottery_type == 'jczq':
-                date_to_fetch = issue if issue else datetime.now().strftime('%Y-%m-%d')
-                list_url = self.API_MATCH_LIST['jczq'].format(date_to_fetch)
-            else:
-                list_url = self.API_MATCH_LIST[lottery_type].format(issue)
-            
-            list_response = requests.get(list_url, timeout=10)
-            list_response.raise_for_status()
+            list_url = self.API_MATCH_LIST[lottery_type].format(issue)
+            list_response = requests.get(list_url, timeout=10); list_response.raise_for_status()
             list_data = list_response.json()
-
             matches = []
             if list_data.get('code') == 200:
                 data_content = list_data.get('data', [])
                 if isinstance(data_content, list): matches = data_content
                 elif isinstance(data_content, dict): matches = data_content.get('matchList', [])
-            else:
-                 return f"错误: {list_data.get('msg', '获取对阵列表失败')}"
+            else: return f"错误: {list_data.get('msg', '获取对阵列表失败')}"
             
-            if not matches:
-                return f"在 {issue} 未找到任何比赛信息。"
+            if not matches: return f"在 {issue} 未找到任何比赛信息。"
             
             match_ids = [str(m['matchInfoId']) for m in matches if 'matchInfoId' in m]
             live_data_map = {}
             if match_ids:
                 scores_url = self.API_LIVE_SCORES.format(",".join(match_ids))
-                scores_response = requests.get(scores_url, timeout=10)
-                scores_response.raise_for_status()
+                scores_response = requests.get(scores_url, timeout=10); scores_response.raise_for_status()
                 scores_data = scores_response.json()
-                if scores_data.get('code') == 200:
-                    live_data_map = {str(item['matchInfoId']): item for item in scores_data.get('data', [])}
+                if scores_data.get('code') == 200: live_data_map = {str(item['matchInfoId']): item for item in scores_data.get('data', [])}
 
-            processed_data = [] # 这是正确的变量名
+            processed_data = []
             for match in matches:
-                match_num = match.get('jcNum') if lottery_type == 'jczq' else match.get('matchNum', '')
+                match_num = match.get('jcNum') if lottery_type in ['jczq', 'bjdc'] else match.get('matchNum', '')
                 home_team = match.get('homeTeam', {}).get('teamName', 'N/A')
                 away_team = match.get('guestTeam', {}).get('teamName', 'N/A')
-                
                 match_id_str = str(match.get('matchInfoId'))
                 live_info = live_data_map.get(match_id_str, {})
                 live_score_details = live_info.get('footballLiveScore', {})
-                if not live_score_details: 
-                    live_score_details = match.get('footballLiveScore', {})
-                
+                if not live_score_details: live_score_details = match.get('footballLiveScore', {})
                 status_str, status_category = self.get_status_info(live_score_details)
-
-                if status_category == 'not_started':
-                    score_str = '- : -'
-                else:
-                    home_score = live_score_details.get('homeScore', '-')
-                    away_score = live_score_details.get('guestScore', '-')
-                    score_str = f"{home_score} - {away_score}"
-                    
+                score_str = '- : -'
+                if status_category != 'not_started':
+                    score_str = f"{live_score_details.get('homeScore', '-')} - {live_score_details.get('guestScore', '-')}"
                 half_time_str = ''
-                home_half_score = live_score_details.get('homeHalfScore')
-                guest_half_score = live_score_details.get('guestHalfScore')
+                home_half_score = live_score_details.get('homeHalfScore'); guest_half_score = live_score_details.get('guestHalfScore')
                 if home_half_score is not None and guest_half_score is not None:
                     half_time_str = f"{home_half_score} - {guest_half_score}"
-
                 row_values = (match_num, home_team, 'vs', away_team, score_str, half_time_str, status_str)
-                
-                # --- 这里是修正之处 ---
-                processed_data.append({'values': row_values, 'tag': status_category}) # 使用正确的变量名 processed_data
-            
+                processed_data.append({'values': row_values, 'tag': status_category})
             return processed_data
-
         except Exception as e:
-            # 返回完整的错误信息，以便调试
             return f"发生未知错误: {e}\n{traceback.format_exc()}"
 
 if __name__ == "__main__":
     app = ScoreApp()
     app.mainloop()
-
