@@ -9,7 +9,7 @@ class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
         # 版本号和标题更新
-        self.title("网易彩票数据获取工具 (v13.0 - 终极功能版)")
+        self.title("网易彩票数据获取工具 (v14.1 - 终极真相版)")
         self.geometry("950x600")
 
         # --- API 配置 ---
@@ -18,7 +18,11 @@ class ScoreApp(tk.Tk):
             "sfc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/rj?degree={}",
             "bjdc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/bjdc?days={}"
         }
-        self.API_GET_CURRENT_ISSUE = "https://sports.163.com/caipiao/api/web/jc/queryCurrentPeriod.html?gameEn={}"
+        # 竞彩/北单的期号API
+        self.API_JC_CURRENT_ISSUE = "https://sports.163.com/caipiao/api/web/jc/queryCurrentPeriod.html?gameEn={}"
+        # --- 核心修正：使用用户发现的、包含完整期号列表的正确API ---
+        self.API_SFC_DEGREE_LIST = "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/sfc"
+        
         self.API_LIVE_SCORES = "https://sports.163.com/caipiao/api/web/match/list/getMatchInfoList/1?matchInfoIds={}"
         
         self.active_timer = None
@@ -61,7 +65,6 @@ class ScoreApp(tk.Tk):
         
         issue_var = tk.StringVar()
         
-        # --- 新增功能：上一期/下一期按钮 ---
         if lottery_type == 'sfc':
             prev_issue_button = ttk.Button(control_frame, text="上一期", command=lambda: self.change_issue(-1))
             prev_issue_button.pack(side=tk.LEFT)
@@ -79,7 +82,6 @@ class ScoreApp(tk.Tk):
             next_day_button = ttk.Button(control_frame, text="后一天", command=lambda: self.change_date(1))
             next_day_button.pack(side=tk.LEFT)
         
-        # --- 核心修正：简化刷新按钮的命令，使其总是读取最新值 ---
         fetch_button = ttk.Button(control_frame, text="刷新", command=lambda: self.start_fetch_thread(is_manual=True))
         fetch_button.pack(side=tk.LEFT, padx=(10, 0))
         
@@ -138,21 +140,17 @@ class ScoreApp(tk.Tk):
             now = datetime.now()
             if 0 <= now.hour < 12: return (now - timedelta(days=1)).strftime('%Y-%m-%d')
             else: return now.strftime('%Y-%m-%d')
-        else:
+        else: # sfc
             return self.get_current_issue_from_api(lottery_type)
-            
-    # --- 新增功能：处理上一期/下一期逻辑 ---
+
     def change_issue(self, delta):
         current_tab_info = self.get_current_tab_info()
-        if not current_tab_info or current_tab_info['type'] != 'sfc':
-            return
-        
+        if not current_tab_info or current_tab_info['type'] != 'sfc': return
         try:
             issue_var = current_tab_info['issue_var']
             current_issue = int(issue_var.get())
             new_issue = current_issue + delta
             issue_var.set(str(new_issue))
-            # 修改期号后，手动触发一次刷新
             self.start_fetch_thread(is_manual=True)
         except (ValueError, KeyError):
             messagebox.showwarning("提示", "当前期号非数字，无法进行加减操作。")
@@ -160,7 +158,6 @@ class ScoreApp(tk.Tk):
     def change_date(self, days_delta):
         current_tab_info = self.get_current_tab_info()
         if not current_tab_info or current_tab_info['type'] not in ['jczq', 'bjdc']: return
-        
         try:
             issue_var = current_tab_info['issue_var']
             current_date = datetime.strptime(issue_var.get(), '%Y-%m-%d')
@@ -177,9 +174,7 @@ class ScoreApp(tk.Tk):
         self.start_fetch_thread(is_manual=True)
 
     def start_fetch_thread(self, is_manual=False):
-        if is_manual: 
-            self.cancel_timer()
-
+        if is_manual: self.cancel_timer()
         current_tab_info = self.get_current_tab_info()
         if not current_tab_info: return
         
@@ -190,7 +185,8 @@ class ScoreApp(tk.Tk):
         if not issue:
             issue = self.get_initial_issue(lottery_type)
             if not issue:
-                messagebox.showwarning("提示", "无法获取期号/日期，请输入后刷新。")
+                tab_name = self.notebook.tab(self.notebook.select(), "text")
+                messagebox.showwarning("提示", f"无法自动获取 {tab_name} 的期号/日期，请手动输入后刷新。")
                 return
             else:
                 issue_var.set(issue)
@@ -201,16 +197,23 @@ class ScoreApp(tk.Tk):
     def fetch_and_display(self, lottery_type, issue, tree_widget):
         self.update_status(f"正在获取 {issue} 的数据...")
         result_data = self.fetch_all_data(lottery_type, issue)
-        self.after(0, self.update_ui_with_results, tree_widget, result_data)
+        self.after(0, self.update_ui_with_results, tree_widget, result_data, issue)
 
-    def update_ui_with_results(self, tree, data):
+    def update_ui_with_results(self, tree, data, original_issue):
         current_tab_info = self.get_current_tab_info()
         if not current_tab_info or tree != current_tab_info['tree']: return 
 
+        current_issue_in_box = current_tab_info['issue_var'].get()
+
+        if isinstance(data, list):
+            if original_issue != current_issue_in_box:
+                print(f"忽略过时数据：请求的是 {original_issue}，但当前已变为 {current_issue_in_box}")
+                return
+        
         for i in tree.get_children(): tree.delete(i)
         
         if isinstance(data, str):
-            if "Traceback" in data: messagebox.showerror("发生未知错误", data)
+            if "Traceback" in data or "at line" in data: messagebox.showerror("发生未知错误", data)
             else: messagebox.showinfo("提示", data)
             self.update_status("数据获取失败或无数据！")
         else:
@@ -232,23 +235,26 @@ class ScoreApp(tk.Tk):
         elif status_enum == 8: status_text = "完"
         return status_text, category
 
+    # --- 核心修正：回归并采用正确的SFC期号列表API ---
     def get_current_issue_from_api(self, lottery_type):
         try:
             if lottery_type == 'sfc':
-                url = "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/rj"
+                url = self.API_SFC_DEGREE_LIST
                 response = requests.get(url, timeout=10)
                 response.raise_for_status()
                 data = response.json()
                 if data.get('code') == 200:
                     degree_list = data.get('data', {}).get('degreeList', [])
+                    # 优先查找正在销售的期号
                     for issue_info in degree_list:
                         if issue_info.get('degreeStatus') == 1:
                             return str(issue_info.get('degree'))
+                    # 如果没有正在销售的，返回列表中的第一个（通常是最新一期）
                     if degree_list:
                         return str(degree_list[0].get('degree'))
                 return None
-            else:
-                url = self.API_GET_CURRENT_ISSUE.format(lottery_type)
+            else: # jczq, bjdc
+                url = self.API_JC_CURRENT_ISSUE.format(lottery_type)
                 response = requests.get(url, timeout=5)
                 response.raise_for_status()
                 data = response.json()
@@ -270,7 +276,11 @@ class ScoreApp(tk.Tk):
                     matches = data_content.get('matchList', [])
                 elif isinstance(data_content, list):
                     matches = data_content
-            else: return f"错误: {list_data.get('msg', '获取对阵列表失败')}"
+            # 处理当期号不存在时API返回的错误信息
+            elif list_data.get('code') == 400 and 'degree' in list_data.get('msg', ''):
+                 return f"期号 {issue} 不存在或已过期。"
+            else:
+                 return f"错误: {list_data.get('msg', '获取对阵列表失败')}"
             
             if not matches: return f"在 {issue} 未找到任何比赛信息。"
             
@@ -288,7 +298,12 @@ class ScoreApp(tk.Tk):
 
             processed_data = []
             for match in matches:
-                match_num = match.get('jcNum') if lottery_type in ['jczq', 'bjdc'] else match.get('matchNum', '')
+                if lottery_type in ['jczq', 'bjdc']:
+                    match_num = match.get('jcNum', '')
+                elif lottery_type == 'sfc':
+                    match_num = match.get('matchNum', '')
+                else: match_num = ''
+
                 home_team = match.get('homeTeam', {}).get('teamName', 'N/A')
                 away_team = match.get('guestTeam', {}).get('teamName', 'N/A')
                 match_id_str = str(match.get('matchInfoId'))
@@ -313,7 +328,7 @@ class ScoreApp(tk.Tk):
                 processed_data.append({'values': row_values, 'tag': status_category})
             return processed_data
         except Exception as e:
-            return f"发生未知错误: {e}\n{traceback.format_exc()}"
+            return f"{type(e).__name__} at line {e.__traceback__.tb_lineno}: {e}\n{traceback.format_exc()}"
 
 if __name__ == "__main__":
     app = ScoreApp()
