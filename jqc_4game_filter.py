@@ -537,7 +537,7 @@ class JQC4GameFilter:
                 else:  # 删除
                     # 删除符合条件的注，保留不符合条件的注
                     if not meets_conditions:
-                    self.filtered_data.append(bet)
+                        self.filtered_data.append(bet)
             
             # 显示结果
             self._display_results()
@@ -565,21 +565,21 @@ class JQC4GameFilter:
             # 检查是否有任何胜平负选项被选中
             wdl_selected = any(self.wdl_vars[i][result].get() for result in ['胜', '平', '负'])
             if wdl_selected:  # 如果有选项被选中
-                    home_goals, away_goals = games[i]
-                    result = self._get_wdl_result(home_goals, away_goals)
+                home_goals, away_goals = games[i]
+                result = self._get_wdl_result(home_goals, away_goals)
                 # 检查结果是否在选中的选项中
                 if not self.wdl_vars[i][result].get():
-                        return False
+                    return False
         
         # 检查大小球过滤
         for i in range(4):
-                ou_condition = self.ou_vars[i].get()
+            ou_condition = self.ou_vars[i].get()
             if ou_condition != "任意":  # 如果选择了具体的大小球条件
-                    home_goals, away_goals = games[i]
-                    total_goals = home_goals + away_goals
-                    ou_result = "大球" if total_goals >= 3 else "小球"
-                    if ou_result != ou_condition:
-                        return False
+                home_goals, away_goals = games[i]
+                total_goals = home_goals + away_goals
+                ou_result = "大球" if total_goals >= 3 else "小球"
+                if ou_result != ou_condition:
+                    return False
         
         return True
     
