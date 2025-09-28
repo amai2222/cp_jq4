@@ -9,16 +9,14 @@ import time
 class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        # 版本号和标题更新
-        self.title("网易彩票数据获取工具 (v23.3-JQC修正版)")
+        self.title("网易彩票数据获取工具 (v24.1 - 北单数据处理修正版)")
         self.geometry("1150x600")
 
         self.API_MATCH_LIST = {
             "jczq": "https://sports.163.com/caipiao/api/web/match/list/jingcai/matchList/1?days={}",
-            "bjdc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/bjdc?days={}",
+            "bjdc": "https://sports.163.com/caipiao/api/web/match/list/beijing/matchList/1?days={}",
             "sfc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/rj?degree={}",
-            # --- JQC修正 1/3: 修正4场进球的API地址 ---
-            "jqs": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/jqc?degree={}", # 原为jqs, 已修正为jqc
+            "jqs": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/jqc?degree={}",
             "bqc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/bqc?degree={}"
         }
         self.API_JC_CURRENT_ISSUE = "https://sports.163.com/caipiao/api/web/jc/queryCurrentPeriod.html?gameEn={}"
@@ -26,7 +24,6 @@ class ScoreApp(tk.Tk):
         self.API_LIVE_SCORES = "https://sports.163.com/caipiao/api/web/match/list/getMatchInfoList/1?matchInfoIds={}"
         
         self.active_timer = None
-
         self.create_menu()
 
         main_frame = ttk.Frame(self, padding="10")
@@ -36,11 +33,8 @@ class ScoreApp(tk.Tk):
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
         self.tabs_info = {
-            "竞彩": {"type": "jczq"}, 
-            "北单": {"type": "bjdc"}, 
-            "胜负彩": {"type": "sfc"},
-            "4场进球": {"type": "jqs"},
-            "6场半全场": {"type": "bqc"}
+            "竞彩": {"type": "jczq"}, "北单": {"type": "bjdc"}, "胜负彩": {"type": "sfc"},
+            "4场进球": {"type": "jqs"}, "6场半全场": {"type": "bqc"}
         }
 
         for name, info in self.tabs_info.items():
@@ -53,9 +47,114 @@ class ScoreApp(tk.Tk):
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
         self.after(200, self.initial_load)
 
-    # ... [create_menu, create_tab, fetch_all_data等函数与您提供的v23.3代码保持不变] ...
-    # 为了简洁，这里省略了未改动的函数，请直接看下面被修改的函数
+    # --- v24.1 核心修正: fetch_all_data 方法 ---
+    def fetch_all_data(self, lottery_type, issue):
+        try:
+            base_url = self.API_MATCH_LIST[lottery_type].format(issue)
+            timestamp = int(time.time() * 1000)
+            separator = "&" if "?" in base_url else "?"
+            list_url = f"{base_url}{separator}_={timestamp}"
 
+            list_response = requests.get(list_url, timeout=10)
+            list_response.raise_for_status()
+            list_data = list_response.json()
+            matches = []
+            if list_data.get('code') == 200:
+                data_content = list_data.get('data')
+                if lottery_type in ['sfc', 'jqs', 'bqc'] and isinstance(data_content, dict):
+                    matches = data_content.get('matchList', [])
+                elif isinstance(data_content, list):
+                    matches = data_content
+            elif list_data.get('code') == 400 and 'degree' in list_data.get('msg', ''):
+                 return f"期号 {issue} 不存在或已过期。"
+            else:
+                 return f"错误: {list_data.get('msg', '获取对阵列表失败')}"
+            
+            if not matches: return f"在 {issue} 未找到任何比赛信息。"
+            
+            match_ids = [str(m['matchInfoId']) for m in matches if 'matchInfoId' in m]
+            live_data_map = {}
+            # 只有竞彩和北单需要调用第二个API获取实时比分
+            if match_ids and lottery_type in ['jczq', 'bjdc']:
+                try:
+                    ts_scores = int(time.time() * 1000)
+                    scores_url = self.API_LIVE_SCORES.format(",".join(match_ids)) + f"&_={ts_scores}"
+                    scores_response = requests.get(scores_url, timeout=10)
+                    scores_response.raise_for_status()
+                    scores_data = scores_response.json()
+                    if scores_data.get('code') == 200: 
+                        live_data_map = {str(item['matchInfoId']): item for item in scores_data.get('data', [])}
+                except requests.exceptions.RequestException:
+                    pass
+
+            processed_data = []
+            for i, match in enumerate(matches, 1):
+                match_id_str = str(match.get('matchInfoId'))
+                live_info = live_data_map.get(match_id_str, {})
+                
+                # final_match_data 优先使用 live_info 的数据, 但 match 的数据作为补充
+                final_match_data = {**match, **live_info}
+
+                # v24.1 修正: 重新梳理数据来源，确保信息正确
+                # 场次编号: 北单用 matchNum, 竞彩用 jcNum, 其他用 matchNum 或自增
+                match_num = match.get('matchNum') or final_match_data.get('jcNum') or str(i)
+                # 次序: 数字彩用 sort，其他用自增
+                sequence_num = str(match.get('sort', i))
+                
+                # 队伍名称: 优先用 live_info, 其次用 match
+                home_team = final_match_data.get('homeTeam', {}).get('teamName', 'N/A')
+                away_team = final_match_data.get('guestTeam', {}).get('teamName', 'N/A')
+                
+                # 让球数: 竞彩和北单逻辑不同
+                let_ball = '0'
+                if lottery_type == 'jczq':
+                    # 竞彩让球在 playMap.HHDA.concede
+                    let_ball = str(final_match_data.get('playMap', {}).get('HHDA', {}).get('concede', '0'))
+                elif lottery_type == 'bjdc':
+                    # 北单让球在原始 match 数据的 odds.letBall
+                    let_ball = str(match.get('odds', {}).get('letBall', '0'))
+
+                # 比分和状态: 从 live_info (或合并后的 final_match_data) 中获取
+                # footbalLiveScore 可能不存在, 直接从 final_match_data 根获取
+                score_source = final_match_data.get('footballLiveScore', final_match_data)
+                
+                status_str, status_category = self.get_status_info(score_source)
+                
+                home_score = score_source.get('homeScore')
+                guest_score = score_source.get('guestScore')
+                home_half = score_source.get('homeHalfScore')
+                guest_half = score_source.get('guestHalfScore')
+
+                score_str = '- : -'
+                if home_score is not None and guest_score is not None:
+                    score_str = f"{home_score} - {guest_score}"
+
+                half_time_str = ''
+                if home_half is not None and guest_half is not None:
+                    half_time_str = f"{home_half} - {guest_half}"
+                
+                result_str = self._calculate_results(home_score, guest_score, let_ball, status_category, lottery_type, home_half, guest_half)
+                
+                # 让球盘口显示
+                display_handicap = ""
+                try:
+                    let_ball_float = float(let_ball)
+                    # 只有竞彩和北单需要显示让球
+                    if lottery_type in ['jczq', 'bjdc'] and let_ball_float != 0:
+                        handicap_val = int(let_ball_float)
+                        display_handicap = f"({handicap_val:+d})"
+                except (ValueError, TypeError): pass
+                
+                home_team_display = f"{home_team} {display_handicap}".strip()
+
+                row_values = (match_num, sequence_num, home_team_display, 'vs', away_team, half_time_str, score_str, status_str, result_str)
+                processed_data.append({'values': row_values, 'tag': status_category})
+            
+            return processed_data
+        except Exception as e:
+            return f"获取或处理数据时发生错误: {type(e).__name__} at line {e.__traceback__.tb_lineno}: {e}\n{traceback.format_exc()}"
+
+    # --- 以下代码与 v24.0 (即v23.3-JQC修正版) 完全一致, 为了完整性全部保留 ---
     def create_menu(self):
         menu_bar = tk.Menu(self)
         self.config(menu=menu_bar)
@@ -131,101 +230,7 @@ class ScoreApp(tk.Tk):
             'auto_refresh_var': auto_refresh_var
         })
         return frame
-
-    def fetch_all_data(self, lottery_type, issue):
-        try:
-            base_url = self.API_MATCH_LIST[lottery_type].format(issue)
-            timestamp = int(time.time() * 1000)
-            separator = "&" if "?" in base_url else "?"
-            list_url = f"{base_url}{separator}_={timestamp}"
-
-            list_response = requests.get(list_url, timeout=10)
-            list_response.raise_for_status()
-            list_data = list_response.json()
-            matches = []
-            if list_data.get('code') == 200:
-                data_content = list_data.get('data')
-                if lottery_type in ['sfc', 'jqs', 'bqc'] and isinstance(data_content, dict):
-                    matches = data_content.get('matchList', [])
-                elif isinstance(data_content, list):
-                    matches = data_content
-            elif list_data.get('code') == 400 and 'degree' in list_data.get('msg', ''):
-                 return f"期号 {issue} 不存在或已过期。"
-            else:
-                 return f"错误: {list_data.get('msg', '获取对阵列表失败')}"
-            
-            if not matches: return f"在 {issue} 未找到任何比赛信息。"
-            
-            match_ids = [str(m['matchInfoId']) for m in matches if 'matchInfoId' in m]
-            live_data_map = {}
-            if match_ids:
-                try:
-                    ts_scores = int(time.time() * 1000)
-                    scores_url = self.API_LIVE_SCORES.format(",".join(match_ids)) + f"&_={ts_scores}"
-                    scores_response = requests.get(scores_url, timeout=10)
-                    scores_response.raise_for_status()
-                    scores_data = scores_response.json()
-                    if scores_data.get('code') == 200: 
-                        live_data_map = {str(item['matchInfoId']): item for item in scores_data.get('data', [])}
-                except requests.exceptions.RequestException:
-                    pass
-
-            processed_data = []
-            auto_sequence = 1
-            for match in matches:
-                match_id_str = str(match.get('matchInfoId'))
-                live_info = live_data_map.get(match_id_str, {})
-                final_match_data = live_info if live_info else match 
-                
-                match_num_from_api = final_match_data.get('jcNum') or match.get('matchNum', '')
-                final_match_num = match_num_from_api if match_num_from_api else str(auto_sequence)
-                sequence_num = str(match.get('sort', auto_sequence)) # 使用 sort 字段（如果存在）
-                home_team = final_match_data.get('homeTeam', {}).get('teamName', 'N/A')
-                away_team = final_match_data.get('guestTeam', {}).get('teamName', 'N/A')
-                
-                let_ball = '0'
-                if lottery_type == 'jczq':
-                    try:
-                        let_ball = final_match_data.get('playMap', {}).get('HHDA', {}).get('concede', '0')
-                    except Exception: pass
-                
-                # 修正：直接从 final_match_data 获取状态和比分， live_score_details 并非总是存在
-                live_score_details = final_match_data.get('footballLiveScore', final_match_data)
-                status_str, status_category = self.get_status_info(live_score_details)
-                
-                home_score = live_score_details.get('homeScore')
-                guest_score = live_score_details.get('guestScore')
-                home_half = live_score_details.get('homeHalfScore')
-                guest_half = live_score_details.get('guestHalfScore')
-
-                score_str = '- : -'
-                if home_score is not None and guest_score is not None:
-                    score_str = f"{home_score} - {guest_score}"
-
-                half_time_str = ''
-                if home_half is not None and guest_half is not None:
-                    half_time_str = f"{home_half} - {guest_half}"
-                
-                result_str = self._calculate_results(home_score, guest_score, let_ball, status_category, lottery_type, home_half, guest_half)
-                
-                display_handicap = ""
-                try:
-                    let_ball_float = float(let_ball)
-                    if lottery_type == 'jczq' and let_ball_float != 0:
-                        handicap_val = int(let_ball_float)
-                        display_handicap = f"({handicap_val:+d})"
-                except (ValueError, TypeError): pass
-                home_team_display = f"{home_team} {display_handicap}".strip()
-
-                row_values = (final_match_num, sequence_num, home_team_display, 'vs', away_team, half_time_str, score_str, status_str, result_str)
-                processed_data.append({'values': row_values, 'tag': status_category})
-                
-                auto_sequence += 1
-            
-            return processed_data
-        except Exception as e:
-            return f"{type(e).__name__} at line {e.__traceback__.tb_lineno}: {e}\n{traceback.format_exc()}"
-
+        
     def _calculate_results(self, home_score, guest_score, let_ball, status_category, lottery_type, home_half_score=None, guest_half_score=None):
         if status_category != 'finished' or home_score is None or guest_score is None:
             return ""
@@ -238,11 +243,10 @@ class ScoreApp(tk.Tk):
 
         spf_map = {1: ("胜", "3"), 0: ("平", "1"), -1: ("负", "0")}
 
-        # --- JQC修正 2/3: 修正4场进球的赛果计算逻辑 ---
         if lottery_type == 'jqs':
             h_res = str(home_s) if home_s < 3 else '3+'
             g_res = str(guest_s) if guest_s < 3 else '3+'
-            return f"{h_res}, {g_res}" # jqc的官方开奖格式是 "主队进球,客队进球"
+            return f"{h_res}, {g_res}"
         
         if lottery_type == 'bqc':
             if home_half_score is None or guest_half_score is None:
@@ -282,14 +286,12 @@ class ScoreApp(tk.Tk):
     def get_status_info(self, match_details):
         if not match_details: return "未开赛", "not_started"
         
-        # 兼容两种数据结构
         status_enum = match_details.get('statusEnum')
         if status_enum is None:
             status_enum = match_details.get('matchStatus')
-            # 转换 matchStatus to statusEnum-like logic
-            if status_enum == 0: status_enum = 1 #未开赛
-            elif status_enum == 2 or status_enum == -1: status_enum = 8 #完场
-            elif status_enum == 1: status_enum = 2 #进行中
+            if status_enum == 0: status_enum = 1
+            elif status_enum == 2 or status_enum == -1: status_enum = 8
+            elif status_enum == 1: status_enum = 2
 
         if status_enum in [2, 4]:
             live_time = match_details.get('liveTime')
@@ -321,7 +323,7 @@ class ScoreApp(tk.Tk):
         except (tk.TclError, KeyError): return None
 
     def initial_load(self):
-        self.notebook.update_idletasks() # 确保notebook已创建
+        self.notebook.update_idletasks()
         self.on_tab_change()
 
     def get_initial_issue(self, lottery_type):
@@ -391,18 +393,10 @@ class ScoreApp(tk.Tk):
 
     def update_ui_with_results(self, tree, data, original_issue):
         current_tab_info = self.get_current_tab_info()
-        # 修复：即使切换tab，后台完成的刷新也应该调度下一次刷新
-        if not current_tab_info:
-            return 
-        if tree != current_tab_info['tree']:
+        if not current_tab_info or tree != current_tab_info['tree'] or original_issue != current_tab_info['issue_var'].get():
             self.schedule_refresh()
             return
         
-        # 确保UI更新时，issue仍然匹配
-        if original_issue != current_tab_info['issue_var'].get():
-            self.schedule_refresh()
-            return
-
         for i in tree.get_children(): tree.delete(i)
         
         if isinstance(data, str):
@@ -419,8 +413,7 @@ class ScoreApp(tk.Tk):
         self.after(0, self.status_bar.config, {'text': message})
     
     def get_current_issue_from_api(self, lottery_type):
-        # --- JQC修正 3/3: 修正期号列表的获取地址 ---
-        api_map = {"sfc": "rj", "jqs": "jqc", "bqc": "bqc"} # 原jqs:jqs, 已修正为jqs:jqc
+        api_map = {"sfc": "rj", "jqs": "jqc", "bqc": "bqc"}
         if lottery_type in api_map:
             try:
                 url = self.API_BASE_DEGREE_LIST.format(api_map[lottery_type])
