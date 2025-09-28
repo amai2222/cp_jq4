@@ -10,7 +10,7 @@ class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
         # 版本号和标题更新
-        self.title("网易彩票数据获取工具 (v25.0 - 功能增强定制版)")
+        self.title("网易彩票数据获取工具 (v25.1 - 胜负彩功能增强版)")
         self.geometry("1150x600")
 
         self.API_MATCH_LIST = {
@@ -33,9 +33,13 @@ class ScoreApp(tk.Tk):
         self.notebook = ttk.Notebook(main_frame)
         self.notebook.pack(fill=tk.BOTH, expand=True)
 
+        # --- v25.1 核心修正 1: 修改标签名称 ---
         self.tabs_info = {
-            "竞彩": {"type": "jczq"}, "北单": {"type": "bjdc"}, "胜负彩": {"type": "sfc"},
-            "4场进球": {"type": "jqs"}, "6场半全场": {"type": "bqc"}
+            "竞彩": {"type": "jczq"}, 
+            "北单": {"type": "bjdc"}, 
+            "胜负彩和任九": {"type": "sfc"}, # <--- 修改此处
+            "4场进球": {"type": "jqs"}, 
+            "6场半全场": {"type": "bqc"}
         }
 
         for name, info in self.tabs_info.items():
@@ -48,15 +52,8 @@ class ScoreApp(tk.Tk):
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_change)
         self.after(200, self.initial_load)
         
-    def create_menu(self):
-        menu_bar = tk.Menu(self)
-        self.config(menu=menu_bar)
-        file_menu = tk.Menu(menu_bar, tearoff=0)
-        menu_bar.add_cascade(label="文件", menu=file_menu)
-        file_menu.add_command(label="退出", command=self.quit)
-
-    # --- v25.0 UI升级: create_tab 方法 ---
     def create_tab(self, parent, name, lottery_type):
+        # ... 此函数与 v25.0 保持一致, 无需改动 ...
         frame = ttk.Frame(parent, padding="10")
         control_frame = ttk.Frame(frame)
         control_frame.pack(fill=tk.X, pady=5)
@@ -90,7 +87,6 @@ class ScoreApp(tk.Tk):
         auto_refresh_check = ttk.Checkbutton(control_frame, text="每分钟自动刷新", variable=auto_refresh_var, command=self.handle_auto_refresh_toggle)
         auto_refresh_check.pack(side=tk.LEFT, padx=(10,0))
 
-        # --- v25.0 新增: 动态赛果汇总标签 ---
         result_string_var = tk.StringVar()
         result_string_label = ttk.Label(control_frame, textvariable=result_string_var, font=('Helvetica', 10, 'bold'), foreground='red')
         result_string_label.pack(side=tk.LEFT, padx=(20, 0))
@@ -116,12 +112,12 @@ class ScoreApp(tk.Tk):
             'issue_var': issue_var,
             'tree': tree,
             'auto_refresh_var': auto_refresh_var,
-            'result_string_var': result_string_var # v25.0 新增
+            'result_string_var': result_string_var 
         })
         return frame
         
     def fetch_all_data(self, lottery_type, issue):
-        # ... 此函数与 v24.1 保持一致 ...
+        # ... 此函数与 v25.0/v24.1 保持一致 ...
         try:
             base_url = self.API_MATCH_LIST[lottery_type].format(issue)
             timestamp = int(time.time() * 1000)
@@ -213,8 +209,9 @@ class ScoreApp(tk.Tk):
         except Exception as e:
             return f"获取或处理数据时发生错误: {type(e).__name__} at line {e.__traceback__.tb_lineno}: {e}\n{traceback.format_exc()}"
 
-    # --- v25.0 逻辑升级: _calculate_results 方法 ---
     def _calculate_results(self, home_score, guest_score, let_ball, status_category, lottery_type, home_half_score=None, guest_half_score=None):
+        # ... 此函数与 v25.0 保持一致, 无需改动 ...
+        # (胜负彩的310格式已经原生支持)
         if status_category != 'finished' or home_score is None or guest_score is None:
             return ""
         
@@ -224,17 +221,13 @@ class ScoreApp(tk.Tk):
         except (ValueError, TypeError):
              return ""
 
-        # 全局统一的胜平负 -> 310 映射
         spf_code_map = {1: '3', 0: '1', -1: '0'}
 
-        # A. 4场进球 (jqs)
         if lottery_type == 'jqs':
             h_res = '3' if home_s >= 3 else str(home_s)
             g_res = '3' if guest_s >= 3 else str(guest_s)
-            # 按要求去掉逗号
             return f"{h_res}{g_res}" 
         
-        # B. 6场半全场 (bqc)
         if lottery_type == 'bqc':
             if home_half_score is None or guest_half_score is None:
                 return ""
@@ -250,10 +243,8 @@ class ScoreApp(tk.Tk):
             half_result_code = spf_code_map[half_comp]
             full_result_code = spf_code_map[full_comp]
             
-            # 按要求显示为数字代码组合
             return f"{half_result_code}{full_result_code}"
 
-        # --- 以下为其他彩种逻辑, 保持不变 ---
         full_comp = 1 if home_s > guest_s else (-1 if home_s < guest_s else 0)
         spf_text, spf_code = (("胜", "3"), ("平", "1"), ("负", "0"))[1 - full_comp]
         
@@ -273,7 +264,7 @@ class ScoreApp(tk.Tk):
             return spf_text
 
     def get_status_info(self, match_details):
-        # ... 此函数与 v24.1 保持一致 ...
+        # ... 此函数与 v25.0 保持一致 ...
         if not match_details: return "未开赛", "not_started"
         
         status_enum = match_details.get('statusEnum')
@@ -321,6 +312,15 @@ class ScoreApp(tk.Tk):
             now = datetime.now()
             return (now - timedelta(days=1) if 0 <= now.hour < 12 else now).strftime('%Y-%m-%d')
         else: return self.get_current_issue_from_api(lottery_type)
+
+    # --- 以下方法均与 v25.0 保持一致 ---
+
+    def create_menu(self):
+        menu_bar = tk.Menu(self)
+        self.config(menu=menu_bar)
+        file_menu = tk.Menu(menu_bar, tearoff=0)
+        menu_bar.add_cascade(label="文件", menu=file_menu)
+        file_menu.add_command(label="退出", command=self.quit)
 
     def change_issue(self, delta):
         current_tab_info = self.get_current_tab_info()
@@ -381,37 +381,34 @@ class ScoreApp(tk.Tk):
         result_data = self.fetch_all_data(lottery_type, issue)
         self.after(0, self.update_ui_with_results, tree_widget, result_data, issue)
 
-    # --- v25.0 逻辑升级: update_ui_with_results 方法 ---
+    # --- v25.1 核心修正 2: 扩展汇总功能 ---
     def update_ui_with_results(self, tree, data, original_issue):
         current_tab_info = self.get_current_tab_info()
         if not current_tab_info or tree != current_tab_info['tree'] or original_issue != current_tab_info['issue_var'].get():
             self.schedule_refresh()
             return
 
-        # 清空旧数据
         for i in tree.get_children(): tree.delete(i)
         
         if isinstance(data, str):
             if "Traceback" in data: messagebox.showerror("发生未知错误", data)
             else: messagebox.showinfo("提示", data)
             self.update_status(f"获取 {original_issue} 数据失败")
-            # 即使失败也要清空汇总标签
             current_tab_info['result_string_var'].set("")
         else:
-            # 填充新数据
             for row_data in data: 
                 tree.insert('', 'end', values=row_data['values'], tags=(row_data['tag'],))
             self.update_status(f"{original_issue} 数据刷新成功！")
 
-            # --- v25.0 新增: 更新动态赛果汇总标签 ---
             lottery_type = current_tab_info['type']
             result_string_var = current_tab_info['result_string_var']
 
-            if lottery_type in ['jqs', 'bqc']:
+            # 将 'sfc' 加入需要显示汇总字符串的列表
+            if lottery_type in ['jqs', 'bqc', 'sfc']: # <--- 修改此处
                 result_parts = []
                 for row_data in data:
                     status_tag = row_data['tag']
-                    result_val = row_data['values'][8] # 第8列是赛果
+                    result_val = row_data['values'][8]
                     
                     if status_tag == 'finished':
                         result_parts.append(str(result_val))
@@ -421,7 +418,6 @@ class ScoreApp(tk.Tk):
                 final_result_string = "".join(result_parts)
                 result_string_var.set(final_result_string)
             else:
-                # 其他标签页清空此标签
                 result_string_var.set("")
         
         self.schedule_refresh()
