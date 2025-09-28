@@ -4,13 +4,14 @@ import requests
 from datetime import datetime, timedelta
 import threading
 import traceback
+import time
 
 class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
         # 版本号和标题更新
-        self.title("网易彩票数据获取工具 (v18.0 - 列序优化版)")
-        self.geometry("1000x600")
+        self.title("网易彩票数据获取工具 (v23.2 - 修正让球与赛果格式)")
+        self.geometry("1150x600")
 
         # --- API 配置 ---
         self.API_MATCH_LIST = {
@@ -55,7 +56,6 @@ class ScoreApp(tk.Tk):
         control_frame = ttk.Frame(frame)
         control_frame.pack(fill=tk.X, pady=5)
         
-        # ... (control frame elements remain the same) ...
         is_date_based = lottery_type in ['jczq', 'bjdc']
         label_text = "比赛日期:" if is_date_based else "期号:"
         issue_label = ttk.Label(control_frame, text=label_text)
@@ -81,11 +81,9 @@ class ScoreApp(tk.Tk):
         auto_refresh_check = ttk.Checkbutton(control_frame, text="每分钟自动刷新", variable=auto_refresh_var, command=self.handle_auto_refresh_toggle)
         auto_refresh_check.pack(side=tk.LEFT, padx=(10,0))
 
-        # --- UI核心升级：调整'score'和'half_score'的顺序 ---
-        columns = ('match_num', 'sequence', 'home_team', 'vs', 'away_team', 'half_score', 'score', 'status')
+        columns = ('match_num', 'sequence', 'home_team', 'vs', 'away_team', 'half_score', 'score', 'status', 'result')
         tree = ttk.Treeview(frame, columns=columns, show='headings')
         
-        # 定义所有列的标题 (按新顺序)
         tree.heading('match_num', text='场次')
         tree.heading('sequence', text='次序')
         tree.heading('home_team', text='主队')
@@ -94,18 +92,21 @@ class ScoreApp(tk.Tk):
         tree.heading('half_score', text='半场')
         tree.heading('score', text='比分')
         tree.heading('status', text='状态')
+        tree.heading('result', text='赛果')
 
-        # 定义所有列的宽度和对齐方式 (按新顺序)
         tree.column('match_num', width=80, anchor=tk.CENTER)
         tree.column('sequence', width=50, anchor=tk.CENTER)
-        tree.column('home_team', width=150, anchor=tk.CENTER)
+        tree.column('home_team', width=160, anchor=tk.E)
         tree.column('vs', width=30, anchor=tk.CENTER)
-        tree.column('away_team', width=150, anchor=tk.CENTER)
+        tree.column('away_team', width=160, anchor=tk.W)
         tree.column('half_score', width=80, anchor=tk.CENTER)
         tree.column('score', width=100, anchor=tk.CENTER)
-        tree.column('status', width=100, anchor=tk.CENTER)
+        tree.column('status', width=80, anchor=tk.CENTER)
+        tree.column('result', width=120, anchor=tk.CENTER)
         
-        tree.tag_configure('in_progress', foreground='red'); tree.tag_configure('finished', foreground='black'); tree.tag_configure('not_started', foreground='gray')
+        tree.tag_configure('in_progress', foreground='red')
+        tree.tag_configure('finished', foreground='black')
+        tree.tag_configure('not_started', foreground='gray')
         tree.pack(fill=tk.BOTH, expand=True, pady=10)
         
         self.tabs_info[name].update({
@@ -114,13 +115,16 @@ class ScoreApp(tk.Tk):
             'auto_refresh_var': auto_refresh_var
         })
         return frame
-    
-    # ... (other methods remain largely the same) ...
 
     def fetch_all_data(self, lottery_type, issue):
         try:
-            list_url = self.API_MATCH_LIST[lottery_type].format(issue)
-            list_response = requests.get(list_url, timeout=10); list_response.raise_for_status()
+            base_url = self.API_MATCH_LIST[lottery_type].format(issue)
+            timestamp = int(time.time() * 1000)
+            separator = "&" if "?" in base_url else "?"
+            list_url = f"{base_url}{separator}_={timestamp}"
+
+            list_response = requests.get(list_url, timeout=10)
+            list_response.raise_for_status()
             list_data = list_response.json()
             matches = []
             if list_data.get('code') == 200:
@@ -140,43 +144,67 @@ class ScoreApp(tk.Tk):
             live_data_map = {}
             if match_ids:
                 try:
-                    scores_url = self.API_LIVE_SCORES.format(",".join(match_ids))
-                    scores_response = requests.get(scores_url, timeout=10); scores_response.raise_for_status()
+                    ts_scores = int(time.time() * 1000)
+                    scores_url = self.API_LIVE_SCORES.format(",".join(match_ids)) + f"&_={ts_scores}"
+                    scores_response = requests.get(scores_url, timeout=10)
+                    scores_response.raise_for_status()
                     scores_data = scores_response.json()
                     if scores_data.get('code') == 200: 
                         live_data_map = {str(item['matchInfoId']): item for item in scores_data.get('data', [])}
-                except requests.exceptions.RequestException:
-                    print("Live scores API failed, will use main list data only.")
+                except requests.exceptions.RequestException as e:
+                    print(f"Live scores API failed: {e}, will use main list data only.")
 
             processed_data = []
             auto_sequence = 1
             for match in matches:
-                match_num_from_api = match.get('jcNum') or match.get('matchNum', '')
+                match_id_str = str(match.get('matchInfoId'))
+                live_info = live_data_map.get(match_id_str, {})
+                
+                final_match_data = live_info if live_info else match 
+                
+                match_num_from_api = final_match_data.get('jcNum') or match.get('matchNum', '')
                 final_match_num = match_num_from_api if match_num_from_api else str(auto_sequence)
                 sequence_num = str(auto_sequence)
-                home_team = match.get('homeTeam', {}).get('teamName', 'N/A')
-                away_team = match.get('guestTeam', {}).get('teamName', 'N/A')
-                match_id_str = str(match.get('matchInfoId'))
+                home_team = final_match_data.get('homeTeam', {}).get('teamName', 'N/A')
+                away_team = final_match_data.get('guestTeam', {}).get('teamName', 'N/A')
                 
-                live_info = live_data_map.get(match_id_str, {})
-                live_score_details = live_info.get('footballLiveScore') if live_info else None
-                if not live_score_details:
-                    live_score_details = match.get('footballLiveScore', {})
+                let_ball = '0'
+                if lottery_type == 'jczq':
+                    try:
+                        let_ball = final_match_data.get('playMap', {}).get('HHDA', {}).get('concede', '0')
+                    except Exception:
+                        let_ball = '0'
+                
+                live_score_details = final_match_data.get('footballLiveScore', {})
                 
                 status_str, status_category = self.get_status_info(live_score_details)
+                
+                home_score = live_score_details.get('homeScore')
+                guest_score = live_score_details.get('guestScore')
+                
                 score_str = '- : -'
-                if status_category != 'not_started' and live_score_details and 'homeScore' in live_score_details and live_score_details.get('homeScore') is not None:
-                    score_str = f"{live_score_details.get('homeScore')} - {live_score_details.get('guestScore')}"
+                if status_category != 'not_started' and home_score is not None:
+                    score_str = f"{home_score} - {guest_score}"
 
                 half_time_str = ''
-                if live_score_details:
-                    home_half = live_score_details.get('homeHalfScore')
-                    guest_half = live_score_details.get('guestHalfScore')
-                    if home_half is not None and guest_half is not None:
-                        half_time_str = f"{home_half} - {guest_half}"
+                home_half = live_score_details.get('homeHalfScore')
+                guest_half = live_score_details.get('guestHalfScore')
+                if home_half is not None and guest_half is not None:
+                    half_time_str = f"{home_half} - {guest_half}"
                 
-                # --- 数据核心升级：调整'half_time_str'和'score_str'的顺序 ---
-                row_values = (final_match_num, sequence_num, home_team, 'vs', away_team, half_time_str, score_str, status_str)
+                result_str = self._calculate_results(home_score, guest_score, let_ball, status_category, lottery_type)
+                
+                display_handicap = ""
+                try:
+                    let_ball_float = float(let_ball)
+                    if lottery_type == 'jczq' and let_ball_float != 0:
+                        handicap_val = int(let_ball_float)
+                        display_handicap = f"({handicap_val:+d})"
+                except (ValueError, TypeError):
+                    pass
+                home_team_display = f"{home_team} {display_handicap}".strip()
+
+                row_values = (final_match_num, sequence_num, home_team_display, 'vs', away_team, half_time_str, score_str, status_str, result_str)
                 processed_data.append({'values': row_values, 'tag': status_category})
                 
                 auto_sequence += 1
@@ -185,7 +213,63 @@ class ScoreApp(tk.Tk):
         except Exception as e:
             return f"{type(e).__name__} at line {e.__traceback__.tb_lineno}: {e}\n{traceback.format_exc()}"
 
-    # ↓↓↓ The rest of the functions are unchanged ↓↓↓
+    def _calculate_results(self, home_score, guest_score, let_ball, status_category, lottery_type):
+        if status_category != 'finished' or home_score is None or guest_score is None:
+            return ""
+        
+        home_s = int(home_score)
+        guest_s = int(guest_score)
+
+        if home_s > guest_s:
+            spf_text, spf_code = "胜", "3"
+        elif home_s < guest_s:
+            spf_text, spf_code = "负", "0"
+        else:
+            spf_text, spf_code = "平", "1"
+
+        if lottery_type == 'sfc':
+            return spf_code
+
+        try:
+            let_ball_float = float(let_ball)
+            if let_ball_float == 0.0:
+                return spf_text
+            
+            if (home_s + let_ball_float) > guest_s:
+                rqspf_text = "让胜"
+            elif (home_s + let_ball_float) < guest_s:
+                rqspf_text = "让负"
+            else:
+                rqspf_text = "让平"
+
+            return f"{spf_text} / {rqspf_text}"
+        except (ValueError, TypeError):
+            return spf_text
+
+
+    def get_status_info(self, live_score_details):
+        if not live_score_details: return "未开赛", "not_started"
+        
+        status_text = live_score_details.get('status', '未知')
+        status_enum = live_score_details.get('statusEnum')
+        
+        if status_enum in [2, 4]:
+            category = "in_progress"
+            live_time = live_score_details.get('liveTime')
+            if live_time is not None:
+                status_text = f"{live_time}′"
+        elif status_enum == 3:
+            category = "in_progress"
+            status_text = "中场"
+        elif status_enum in [8, 5, 6, 7]:
+            category = "finished"
+            status_text = "完"
+        else:
+            category = "not_started"
+            status_text = "未开赛"
+            
+        return status_text, category
+        
     def handle_auto_refresh_toggle(self):
         self.cancel_timer() 
         current_tab_info = self.get_current_tab_info()
@@ -311,16 +395,6 @@ class ScoreApp(tk.Tk):
 
     def update_status(self, message):
         self.after(0, self.status_bar.config, {'text': message})
-        
-    def get_status_info(self, live_score_details):
-        if not live_score_details: return "未开赛", "not_started"
-        status_text = live_score_details.get('status', '未知'); status_enum = live_score_details.get('statusEnum')
-        if status_enum in [2, 3, 4] or '′' in status_text: category = "in_progress"
-        elif status_enum in [8, 5, 6, 7]: category = "finished"
-        else: category = "not_started"
-        if status_enum == 3: status_text = "中场"
-        elif status_enum == 8: status_text = "完"
-        return status_text, category
 
     def get_current_issue_from_api(self, lottery_type):
         try:
