@@ -9,8 +9,8 @@ import time
 class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        # 版本号更新，并标记本次重大逻辑变更
-        self.title("实时比分查看工具 (v27.0 - 北单数据源修正版)")
+        # 版本号更新
+        self.title("实时比分查看工具 (v28.1 - 优化滚动体验版)")
         self.geometry("1150x600")
 
         self.API_MATCH_LIST = {
@@ -85,7 +85,7 @@ class ScoreApp(tk.Tk):
         auto_refresh_check.pack(side=tk.LEFT, padx=(10,0))
         
         result_string_var = tk.StringVar()
-        result_string_label = ttk.Label(control_frame, textvariable=result_string_var, font=('Helvetica', 10, 'bold'), foreground='red')
+        result_string_label = ttk.Label(control_frame, textvariable=result_string_var, font=('Helvetica', 12, 'bold'), foreground='red')
         result_string_label.pack(side=tk.LEFT, padx=(20, 0))
         
         result_string_label.config(cursor="hand2")
@@ -114,7 +114,6 @@ class ScoreApp(tk.Tk):
             self.clipboard_append(text_to_copy)
             self.update_status(f"已复制: {text_to_copy}")
 
-    # ==================== v27.0 核心修正区域 ====================
     def fetch_all_data(self, lottery_type, issue):
         try:
             list_url = self.API_MATCH_LIST[lottery_type].format(issue) + f"&_={int(time.time() * 1000)}"
@@ -141,7 +140,6 @@ class ScoreApp(tk.Tk):
 
             processed_data = []
             for i, match in enumerate(matches, 1):
-                # 合并数据, live_data_map 的信息会覆盖 match 的同名字段, 但 playMap 是 live_data_map 独有的
                 final_match_data = {**match, **live_data_map.get(str(match.get('matchInfoId')), {})}
                 
                 match_num_raw = match.get('matchNum') or final_match_data.get('jcNum')
@@ -154,15 +152,11 @@ class ScoreApp(tk.Tk):
                 home_team = final_match_data.get('homeTeam', {}).get('teamName', 'N/A')
                 away_team = final_match_data.get('guestTeam', {}).get('teamName', 'N/A')
                 
-                # --- v27.0 修正：让球信息数据源变更 ---
                 let_ball = '0'
                 if lottery_type == 'jczq':
                     let_ball = str(final_match_data.get('playMap', {}).get('HHDA', {}).get('concede', '0'))
                 elif lottery_type == 'bjdc':
-                    # 北单的让球数, 以实时数据中的 BJ_HDA 玩法为唯一权威来源
                     let_ball = str(final_match_data.get('playMap', {}).get('BJ_HDA', {}).get('concede', '0'))
-                    # 下面这行是旧逻辑, 不再使用
-                    # let_ball = str(match.get('odds', {}).get('letBall', '0'))
 
                 score_source = final_match_data.get('footballLiveScore', final_match_data)
                 status_str, status_category = self.get_status_info(score_source)
@@ -190,7 +184,6 @@ class ScoreApp(tk.Tk):
             return processed_data
         except Exception as e:
             return f"获取或处理数据时发生错误: {traceback.format_exc()}"
-    # ==========================================================
 
     def _calculate_results(self, home_score, guest_score, let_ball, status_category, lottery_type, home_half_score=None, guest_half_score=None):
         if status_category != 'finished' or home_score is None or guest_score is None: return ""
@@ -198,6 +191,7 @@ class ScoreApp(tk.Tk):
         except (ValueError, TypeError): return ""
 
         spf_text_map = {1: "胜", 0: "平", -1: "负"}; spf_code_map = {1: '3', 0: '1', -1: '0'}
+        
         full_comp = 1 if home_s > guest_s else (-1 if home_s < guest_s else 0)
         spf_text = spf_text_map.get(full_comp, "")
         spf_code = spf_code_map.get(full_comp, "")
@@ -215,11 +209,17 @@ class ScoreApp(tk.Tk):
         if lottery_type in ['jczq', 'bjdc']:
             try:
                 let_ball_float = float(let_ball)
-                if let_ball_float == 0.0: return spf_text
+                
+                if let_ball_float == 0.0: 
+                    return spf_text
                 
                 rq_comp = 1 if (home_s + let_ball_float) > guest_s else (-1 if (home_s + let_ball_float) < guest_s else 0)
                 rqspf_text = f"让{spf_text_map.get(rq_comp, '')}"
-                return f"{spf_text} / {rqspf_text}"
+                
+                if lottery_type == 'bjdc':
+                    return rqspf_text
+                else: 
+                    return f"{spf_text} / {rqspf_text}"
             except (ValueError, TypeError, KeyError): 
                 return spf_text
         
@@ -246,6 +246,7 @@ class ScoreApp(tk.Tk):
         else: 
             return "未开赛", "not_started"
 
+    # ==================== v28.1 核心修正区域 ====================
     def update_ui_with_results(self, tree, data, original_issue):
         current_tab_info = self.get_current_tab_info()
         if not current_tab_info or tree != current_tab_info['tree'] or original_issue != current_tab_info['issue_var'].get():
@@ -253,6 +254,8 @@ class ScoreApp(tk.Tk):
 
         for i in tree.get_children(): tree.delete(i)
         result_string_var = current_tab_info['result_string_var']
+        
+        lottery_type = current_tab_info['type'] # 将 lottery_type 提前获取
         
         if isinstance(data, str):
             messagebox.showinfo("提示", data) if "Traceback" not in data else messagebox.showerror("发生未知错误", data)
@@ -262,14 +265,18 @@ class ScoreApp(tk.Tk):
             for row_data in data: tree.insert('', 'end', values=row_data['values'], tags=(row_data['tag'],))
             self.update_status(f"{original_issue} 数据刷新成功！")
 
-            lottery_type = current_tab_info['type']
             if lottery_type in ['jqs', 'bqc', 'sfc']:
                 final_result_string = "".join([str(row['values'][8]) if row['tag'] == 'finished' else '*' for row in data])
                 result_string_var.set(final_result_string or " ")
             else:
                 result_string_var.set(" ")
+            
+            # --- v28.1 新增逻辑：对于竞彩和北单，刷新后自动滚动到底部 ---
+            if lottery_type in ['jczq', 'bjdc']:
+                tree.yview_moveto(1.0)
         
         self.schedule_refresh()
+    # ==========================================================
 
     def create_menu(self): 
         menu_bar = tk.Menu(self); self.config(menu=menu_bar); file_menu = tk.Menu(menu_bar, tearoff=0); menu_bar.add_cascade(label="文件", menu=file_menu); file_menu.add_command(label="退出", command=self.quit)
