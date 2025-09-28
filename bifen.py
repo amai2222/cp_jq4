@@ -9,7 +9,8 @@ import time
 class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("实时比分查看工具 (v26.1 - 紧急Bug修复版)")
+        # 版本号更新，并标记本次重大逻辑变更
+        self.title("实时比分查看工具 (v27.0 - 北单数据源修正版)")
         self.geometry("1150x600")
 
         self.API_MATCH_LIST = {
@@ -113,6 +114,7 @@ class ScoreApp(tk.Tk):
             self.clipboard_append(text_to_copy)
             self.update_status(f"已复制: {text_to_copy}")
 
+    # ==================== v27.0 核心修正区域 ====================
     def fetch_all_data(self, lottery_type, issue):
         try:
             list_url = self.API_MATCH_LIST[lottery_type].format(issue) + f"&_={int(time.time() * 1000)}"
@@ -139,6 +141,7 @@ class ScoreApp(tk.Tk):
 
             processed_data = []
             for i, match in enumerate(matches, 1):
+                # 合并数据, live_data_map 的信息会覆盖 match 的同名字段, 但 playMap 是 live_data_map 独有的
                 final_match_data = {**match, **live_data_map.get(str(match.get('matchInfoId')), {})}
                 
                 match_num_raw = match.get('matchNum') or final_match_data.get('jcNum')
@@ -151,9 +154,15 @@ class ScoreApp(tk.Tk):
                 home_team = final_match_data.get('homeTeam', {}).get('teamName', 'N/A')
                 away_team = final_match_data.get('guestTeam', {}).get('teamName', 'N/A')
                 
+                # --- v27.0 修正：让球信息数据源变更 ---
                 let_ball = '0'
-                if lottery_type == 'jczq': let_ball = str(final_match_data.get('playMap', {}).get('HHDA', {}).get('concede', '0'))
-                elif lottery_type == 'bjdc': let_ball = str(match.get('odds', {}).get('letBall', '0'))
+                if lottery_type == 'jczq':
+                    let_ball = str(final_match_data.get('playMap', {}).get('HHDA', {}).get('concede', '0'))
+                elif lottery_type == 'bjdc':
+                    # 北单的让球数, 以实时数据中的 BJ_HDA 玩法为唯一权威来源
+                    let_ball = str(final_match_data.get('playMap', {}).get('BJ_HDA', {}).get('concede', '0'))
+                    # 下面这行是旧逻辑, 不再使用
+                    # let_ball = str(match.get('odds', {}).get('letBall', '0'))
 
                 score_source = final_match_data.get('footballLiveScore', final_match_data)
                 status_str, status_category = self.get_status_info(score_source)
@@ -166,10 +175,12 @@ class ScoreApp(tk.Tk):
                 result_str = self._calculate_results(home_score, guest_score, let_ball, status_category, lottery_type, home_half, guest_half)
                 
                 display_handicap = ""
-                if lottery_type in ['jczq', 'bjdc'] and let_ball != '0' and let_ball is not None:
+                if lottery_type in ['jczq', 'bjdc'] and let_ball and let_ball != '0' and let_ball != '0.0':
                     try:
-                        handicap_val = int(float(let_ball)); display_handicap = f"({handicap_val:+d})"
-                    except (ValueError, TypeError): pass
+                        handicap_val = int(float(let_ball))
+                        display_handicap = f"({handicap_val:+d})"
+                    except (ValueError, TypeError):
+                        pass
                 
                 home_team_display = f"{home_team} {display_handicap}".strip()
 
@@ -179,6 +190,7 @@ class ScoreApp(tk.Tk):
             return processed_data
         except Exception as e:
             return f"获取或处理数据时发生错误: {traceback.format_exc()}"
+    # ==========================================================
 
     def _calculate_results(self, home_score, guest_score, let_ball, status_category, lottery_type, home_half_score=None, guest_half_score=None):
         if status_category != 'finished' or home_score is None or guest_score is None: return ""
@@ -187,14 +199,17 @@ class ScoreApp(tk.Tk):
 
         spf_text_map = {1: "胜", 0: "平", -1: "负"}; spf_code_map = {1: '3', 0: '1', -1: '0'}
         full_comp = 1 if home_s > guest_s else (-1 if home_s < guest_s else 0)
-        spf_text = spf_text_map[full_comp]; spf_code = spf_code_map[full_comp]
+        spf_text = spf_text_map.get(full_comp, "")
+        spf_code = spf_code_map.get(full_comp, "")
 
         if lottery_type == 'jqs': return f"{'3' if home_s >= 3 else home_s}{'3' if guest_s >= 3 else guest_s}"
         if lottery_type == 'bqc':
-            if home_half_score is None: return ""
-            try: half_comp = 1 if int(home_half_score) > int(guest_half_score) else (-1 if int(home_half_score) < int(guest_half_score) else 0)
-            except: return ""
-            return f"{spf_code_map[half_comp]}{spf_code}"
+            if home_half_score is None or guest_half_score is None: return ""
+            try: 
+                half_h, half_g = int(home_half_score), int(guest_half_score)
+                half_comp = 1 if half_h > half_g else (-1 if half_h < half_g else 0)
+                return f"{spf_code_map.get(half_comp, '')}{spf_code}"
+            except (ValueError, TypeError): return ""
         if lottery_type == 'sfc': return spf_code
 
         if lottery_type in ['jczq', 'bjdc']:
@@ -203,33 +218,27 @@ class ScoreApp(tk.Tk):
                 if let_ball_float == 0.0: return spf_text
                 
                 rq_comp = 1 if (home_s + let_ball_float) > guest_s else (-1 if (home_s + let_ball_float) < guest_s else 0)
-                rqspf_text = f"让{spf_text_map[rq_comp]}"
+                rqspf_text = f"让{spf_text_map.get(rq_comp, '')}"
                 return f"{spf_text} / {rqspf_text}"
-            except (ValueError, TypeError, KeyError): return spf_text
+            except (ValueError, TypeError, KeyError): 
+                return spf_text
         
         return spf_text
 
-    # --- BUG修复 ---
     def get_status_info(self, match_details):
         if not match_details: 
             return "未开赛", "not_started"
         
         status_enum = match_details.get('statusEnum')
         
-        # 兼容旧API的 matchStatus
         if status_enum is None:
-            status_enum = match_details.get('matchStatus')
-            # 这是一个将旧status映射到新status的逻辑
-            if status_enum == 0:        # 旧:未开赛 -> 新:未开赛(1)
-                status_enum = 1
-            elif status_enum in [2, -1]:# 旧:完场/取消 -> 新:完场(8)
-                status_enum = 8
-            elif status_enum == 1:      # 旧:进行中 -> 新:进行中(2)
-                status_enum = 2
-        
-        # 根据新的status_enum判断状态
+            status_code = match_details.get('matchStatus')
+            status_map = { 0: 1, 1: 2, 2: 8, -1: 8 }
+            status_enum = status_map.get(status_code)
+
         if status_enum in [2, 4]: 
-            return (f"{match_details.get('liveTime')}′" if match_details.get('liveTime') is not None else "进行中"), "in_progress"
+            live_time = match_details.get('liveTime')
+            return (f"{live_time}′" if live_time is not None else "进行中"), "in_progress"
         elif status_enum == 3: 
             return "中场", "in_progress"
         elif status_enum in [8, 5, 6, 7]: 
@@ -255,7 +264,7 @@ class ScoreApp(tk.Tk):
 
             lottery_type = current_tab_info['type']
             if lottery_type in ['jqs', 'bqc', 'sfc']:
-                final_result_string = "".join([str(row['values'][8]) if row['tag'] == 'finished' else '??' for row in data])
+                final_result_string = "".join([str(row['values'][8]) if row['tag'] == 'finished' else '*' for row in data])
                 result_string_var.set(final_result_string or " ")
             else:
                 result_string_var.set(" ")
