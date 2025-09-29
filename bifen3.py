@@ -10,8 +10,8 @@ import json
 class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        # 修正版本号
-        self.title("实时比分查看工具 (v41.1 - 语法修正)")
+        # 更新版本号
+        self.title("实时比分查看工具 (v43.1 - 优化进行中颜色)")
         self.geometry("1530x600")
         self.match_data_map = {}
         self.API_MATCH_LIST = {"jczq": "https://sports.163.com/caipiao/api/web/match/list/jingcai/matchList/1?days={}", "bjdc": "https://sports.163.com/caipiao/api/web/match/list/beijing/matchList/1?days={}", "sfc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/rj?degree={}", "jqs": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/jqc?degree={}", "bqc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/bqc?degree={}"}
@@ -50,7 +50,14 @@ class ScoreApp(tk.Tk):
         anchors = {'match_num': tk.CENTER, 'match_time': tk.CENTER, 'sequence': tk.CENTER, 'home_team': tk.E, 'vs': tk.CENTER, 'away_team': tk.W, 'half_score': tk.CENTER, 'score': tk.CENTER, 'status': tk.CENTER, 'result': tk.CENTER, 'home_sp': tk.CENTER, 'draw_sp': tk.CENTER, 'away_sp': tk.CENTER, 'path': tk.CENTER}
         
         for col in columns: tree.heading(col, text=headings[col]); tree.column(col, width=widths[col], anchor=anchors[col])
-        tree.tag_configure('in_progress', foreground='red'); tree.tag_configure('finished', foreground='black'); tree.tag_configure('not_started', foreground='gray'); tree.tag_configure('cancelled', foreground='blue')
+        
+        # ======================= v43.1 修改：将“进行中”的颜色改为绿色 ========================
+        tree.tag_configure('in_progress', foreground='green') # 进行中 (绿色)
+        tree.tag_configure('finished', foreground='black')      # 已完赛 (黑色)
+        tree.tag_configure('not_started', foreground='gray')     # 未开赛 (灰色)
+        tree.tag_configure('cancelled', foreground='blue')       # 已取消 (蓝色)
+        tree.tag_configure('path_alert', foreground='red')       # 路径警示 (红色，高优先级)
+
         self.tabs_info[name].update({'issue_var': issue_var, 'tree': tree, 'auto_refresh_var': auto_refresh_var, 'result_string_var': result_string_var})
         return frame
         
@@ -84,7 +91,7 @@ class ScoreApp(tk.Tk):
                     elif lottery_type == 'bjdc': let_ball = str(final_match_data.get('playMap', {}).get('BJ_HDA', {}).get('concede', '0'))
                 
                 result_str = self._calculate_results(home_score, guest_score, let_ball, status_category, lottery_type, home_half, guest_half);
-                hda_odds = self._get_hda_odds(final_match_data); home_sp = hda_odds.get('主胜', '-'); draw_sp = hda_odds.get('平', '-'); away_sp = hda_odds.get('客胜', '-'); path_str = self._calculate_path(home_score, guest_score, status_category, hda_odds)
+                hda_odds = self._get_hda_odds(final_match_data); home_sp, draw_sp, away_sp = hda_odds.get('主胜', '-'), hda_odds.get('平', '-'), hda_odds.get('客胜', '-'); path_str = self._calculate_path(home_score, guest_score, status_category, hda_odds)
 
                 display_handicap = ""
                 if lottery_type in ['jczq', 'bjdc'] and let_ball and let_ball != '0' and let_ball != '0.0':
@@ -92,7 +99,18 @@ class ScoreApp(tk.Tk):
                     except (ValueError, TypeError): pass
                 home_team_display = f"{home_team} {display_handicap}".strip()
                 row_values = (match_num, match_time_display, str(match.get('sort', i)), home_team_display, 'vs', away_team, half_time_str, score_str, status_str, result_str, home_sp, draw_sp, away_sp, path_str)
-                processed_data.append({'values': row_values, 'tag': status_category, 'full_data': final_match_data})
+                
+                current_tags = []
+                is_path_alert = path_str in ["反路", "平"]
+
+                if is_path_alert:
+                    # 如果需要高亮，就只用 'path_alert' 标签来决定颜色 (红色)
+                    current_tags.append('path_alert')
+                else:
+                    # 如果不需要高亮，就用常规的状态标签决定颜色 (例如, 'in_progress' 会是绿色)
+                    current_tags.append(status_category)
+
+                processed_data.append({'values': row_values, 'tags': tuple(current_tags), 'full_data': final_match_data, 'status_category': status_category})
             return processed_data
         except Exception: return f"获取或处理数据时发生错误: {traceback.format_exc()}"
 
@@ -106,10 +124,16 @@ class ScoreApp(tk.Tk):
             self.update_status(f"获取 {original_issue} 数据失败"); result_string_var.set(" ")
         else:
             for row_data in data:
-                item_id = tree.insert('', 'end', values=row_data['values'], tags=(row_data['tag'],)); self.match_data_map[item_id] = row_data['full_data']
+                item_id = tree.insert('', 'end', values=row_data['values'], tags=row_data['tags'])
+                self.match_data_map[item_id] = row_data['full_data']
             self.update_status(f"{original_issue} 数据刷新成功！")
-            if lottery_type in ['jqs', 'bqc', 'sfc']: final_result_string = "".join([str(row['values'][9]) if row['tag'] == 'finished' else '*' for row in data]); result_string_var.set(final_result_string or " ")
-            else: result_string_var.set(" ")
+            
+            if lottery_type in ['jqs', 'bqc', 'sfc']:
+                final_result_string = "".join([str(row['values'][9]) if row.get('status_category') == 'finished' else '*' for row in data])
+                result_string_var.set(final_result_string or " ")
+            else:
+                result_string_var.set(" ")
+
             if lottery_type in ['jczq', 'bjdc']: tree.yview_moveto(1.0)
         self.schedule_refresh()
 
@@ -206,33 +230,21 @@ class ScoreApp(tk.Tk):
                 if name in ["主胜", "平", "客胜"]: odds_dict[name] = item.get('odds', '-')
         return odds_dict
 
-    # ======================= v41.1 核心修正：修正语法错误 ========================
     def _calculate_path(self, home_score, guest_score, status_category, odds_dict):
         if status_category not in ['in_progress', 'finished']: return ""
-        try:
-            home_s, guest_s = int(home_score), int(guest_score)
-        except (ValueError, TypeError):
-            return ""
-        
-        # 修正此处的语法错误和拼写错误
-        if home_s > guest_s:
-            actual_result = "主胜"
-        elif home_s < guest_s:
-            actual_result = "客胜"
-        else:
-            return "平"
-            
+        try: home_s, guest_s = int(home_score), int(guest_score)
+        except (ValueError, TypeError): return ""
+        if home_s > guest_s: actual_result = "主胜"
+        elif home_s < guest_s: actual_result = "客胜"
+        else: return "平"
         if not odds_dict: return ""
-
-        float_odds = {}
+        float_odds = {};
         for name, sp in odds_dict.items():
             try: float_odds[name] = float(sp)
             except (ValueError, TypeError): continue
         if not float_odds: return ""
-
         favorite_result = min(float_odds, key=float_odds.get)
         return "正路" if actual_result == favorite_result else "反路"
-    # ======================= 修正结束 ========================================
 
     def _calculate_results(self, home_score, guest_score, let_ball, status_category, lottery_type, home_half_score=None, guest_half_score=None):
         spf_map, code_map = {1: "胜", 0: "平", -1: "负"}, {1: '3', 0: '1', -1: '0'}
