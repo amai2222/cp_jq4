@@ -2,7 +2,7 @@
 
 
 a = Analysis(
-    ['bifen.py'],
+    ['bifen2.py'],
     pathex=[],
     binaries=[],
     datas=[],

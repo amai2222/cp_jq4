@@ -10,8 +10,8 @@ import json
 class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        # 更新版本号
-        self.title("实时比分查看工具 (v44.1 - 修正赛事解析)")
+        # 版本号
+        self.title("实时比分查看工具 (v45.0 - 兼容新赔率结构)")
         self.geometry("1620x600") 
         self.match_data_map = {}
         self.API_MATCH_LIST = {"jczq": "https://sports.163.com/caipiao/api/web/match/list/jingcai/matchList/1?days={}", "bjdc": "https://sports.163.com/caipiao/api/web/match/list/beijing/matchList/1?days={}", "sfc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/rj?degree={}", "jqs": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/jqc?degree={}", "bqc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/bqc?degree={}"}
@@ -81,7 +81,6 @@ class ScoreApp(tk.Tk):
             for i, match in enumerate(matches, 1):
                 live_data = live_data_map.get(str(match.get('matchInfoId')), {}); final_match_data = {**match, **live_data}; status_str, status_category = self.get_status_info(final_match_data)
                 
-                # ======================= v44.1 修正：正确解析赛事名称 ========================
                 league_name = final_match_data.get('leagueMatch', {}).get('leagueName', 'N/A')
                 
                 match_num, match_time_display = self._get_basic_info(final_match_data, lottery_type, i, issue); home_team = final_match_data.get('homeTeam', {}).get('teamName', 'N/A'); away_team = final_match_data.get('guestTeam', {}).get('teamName', 'N/A')
@@ -157,7 +156,9 @@ class ScoreApp(tk.Tk):
         main_frame = ttk.Frame(popup, padding=10); main_frame.pack(fill=tk.BOTH, expand=True)
         content_frame = ttk.Frame(main_frame); content_frame.pack(fill=tk.X, expand=True)
         has_odds_displayed = False
-        play_map = match_data.get('playMap', {}); hda_data_node = play_map.get('HDA') or play_map.get('BJ_HDA')
+        play_map = match_data.get('playMap', {})
+        # v45.0 修改：兼容 HHDA, HDA, BJ_HDA 三种结构
+        hda_data_node = play_map.get('HHDA') or play_map.get('HDA') or play_map.get('BJ_HDA')
         if hda_data_node:
             odds_list = hda_data_node.get('playItemList') or hda_data_node.get('options')
             if odds_list:
@@ -215,7 +216,10 @@ class ScoreApp(tk.Tk):
         return "未开赛", "not_started"
 
     def _get_hda_odds(self, match_data):
-        odds_dict = {}; play_map = match_data.get('playMap', {}); hda_data_node = play_map.get('HDA') or play_map.get('BJ_HDA')
+        odds_dict = {}
+        play_map = match_data.get('playMap', {})
+        # v45.0 修改：兼容 HHDA, HDA, BJ_HDA 三种结构
+        hda_data_node = play_map.get('HHDA') or play_map.get('HDA') or play_map.get('BJ_HDA')
         if hda_data_node:
             odds_list = hda_data_node.get('playItemList') or hda_data_node.get('options')
             if odds_list:
