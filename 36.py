@@ -83,8 +83,8 @@ def get_draw_details(game_type, draw_id):
 class LotteryCheckerApp:
     def __init__(self, root):
         self.root = root
-        ### [V3.7 修改] 更新版本号
-        self.root.title("足彩兑奖器 (半全场/进球彩) V3.7 - 支持手动对奖")
+        ### [V3.10 修改] 更新版本号
+        self.root.title("足彩兑奖器 (半全场/进球彩) V3.10 - 支持期号不存在时手工输入 + 自动排序 + 手工兑奖")
         self.root.geometry("1000x800"); self.root.minsize(800, 600)
         self.current_game_type = tk.StringVar(value=GAME_TYPE_BQC)
         self.setup_styles_and_fonts()
@@ -141,6 +141,7 @@ class LotteryCheckerApp:
         self.add_future_draw_button.pack(side=tk.LEFT, padx=5)
 
         self.fetch_button = ttk.Button(frame2, text="获取详情", command=self.fetch_data_threaded); self.fetch_button.pack(side=tk.LEFT, padx=5)
+        self.manual_button = ttk.Button(frame2, text="手工兑奖", command=self.manual_check_mode); self.manual_button.pack(side=tk.LEFT, padx=5)
         self.draw_time_label = ttk.Label(frame2, text="", font=self.highlight_font); self.draw_time_label.pack(side=tk.LEFT, padx=10)
         self.status_label = ttk.Label(frame2, text="", font=self.highlight_font, foreground="blue"); self.status_label.pack(side=tk.RIGHT, padx=10)
         self.prize_info_label = ttk.Label(frame3, text="", font=self.bold_font, foreground="red", justify=tk.LEFT); self.prize_info_label.pack(fill='x', anchor='w')
@@ -158,6 +159,7 @@ class LotteryCheckerApp:
         self.user_bets_text = scrolledtext.ScrolledText(frame4, height=10, font=self.courier_font, wrap=tk.WORD, relief='solid', borderwidth=1); self.user_bets_text.pack(fill='x', expand=True, pady=5)
         button_frame = ttk.Frame(frame4); button_frame.pack(fill='x', pady=(5,0))
         self.import_button = ttk.Button(button_frame, text="从文件导入(.txt)", command=self.import_from_file); self.import_button.pack(side=tk.LEFT)
+        self.sort_button = ttk.Button(button_frame, text="自动排序", command=self.sort_bets); self.sort_button.pack(side=tk.LEFT, padx=5)
         self.check_button = ttk.Button(button_frame, text="开始对奖 >>", style='Success.TButton', command=self.check_prizes_threaded); self.check_button.pack(side=tk.RIGHT)
         self.prize_summary_text = tk.Text(frame5, height=4, font=self.prize_summary_font, relief='flat', wrap=tk.WORD, bg=self.style.lookup('TFrame', 'background')); self.prize_summary_text.pack(fill='x', pady=(0, 10))
         self.prize_summary_text.tag_configure("red_bold", foreground="#dc3545", font=self.prize_summary_bold_font)
@@ -198,10 +200,70 @@ class LotteryCheckerApp:
         except (ValueError, IndexError):
             messagebox.showerror("错误", "无法根据当前列表推算下一期号，请确保列表包含有效的数字期号。")
 
+    def manual_check_mode(self):
+        """手工兑奖模式 - 清空期号，直接进入手工输入状态"""
+        # 清空期号
+        self.draw_id_combo.set("")
+        
+        # 清空相关显示
+        self.draw_time_label.config(text="")
+        self.prize_info_label.config(text="")  # 清空奖金信息
+        self.match_details_text.config(state=tk.NORMAL)
+        self.match_details_text.delete('1.0', tk.END)
+        self.match_details_text.config(state=tk.DISABLED)
+        
+        # 清空开奖信息显示
+        self.prize_summary_text.config(state=tk.NORMAL)
+        self.prize_summary_text.delete('1.0', tk.END)
+        self.prize_summary_text.config(state=tk.DISABLED)
+        if self.results_tree.get_children():
+            self.results_tree.delete(*self.results_tree.get_children())
+        
+        # 设置手工输入状态
+        config = GAME_CONFIG[self.current_game_type.get()]
+        self.status_label.config(text="手工兑奖模式 - 请手动输入开奖号码", foreground="orange")
+        self.official_numbers_var.set("") # 清空内容，方便用户输入
+        self.official_numbers_entry.config(state='normal') # 允许编辑
+        self.user_bets_label.config(text=f"粘贴投注号码(每行一票)，或从文件导入:\n{config['placeholder']}")
+        
+        # 启用对奖相关控件
+        self.check_button.config(state=tk.NORMAL)
+        self.import_button.config(state=tk.NORMAL)
+        self.user_bets_text.config(state=tk.NORMAL)
+        
+        messagebox.showinfo("手工兑奖模式", f"已进入手工兑奖模式！\n\n请手动输入开奖号码（{config['result_len']}位数字），然后输入投注号码进行兑奖。")
+
     def on_main_game_selected(self):
+        # 检查是否在手工兑奖模式下
+        is_manual_mode = self.status_label.cget("text").startswith("手工兑奖模式")
+        
+        # 如果在手工兑奖模式下切换玩法，自动退出手工模式并刷新
+        if is_manual_mode:
+            # 退出手工兑奖模式，恢复正常状态
+            config = GAME_CONFIG[self.current_game_type.get()]
+            self.status_label.config(text=f"已选 {config['name']}，正获取期号...", foreground="blue")
+            self.official_numbers_var.set("")
+            self.official_numbers_entry.config(state='readonly')
+            
+            # 清空开奖数据，准备重新获取
+            self.prize_info_label.config(text="")
+            self.draw_time_label.config(text="")
+            self.match_details_text.config(state=tk.NORMAL)
+            self.match_details_text.delete('1.0', tk.END)
+            self.match_details_text.config(state=tk.DISABLED)
+            
+            # 清空对奖结果
+            self.prize_summary_text.config(state=tk.NORMAL)
+            self.prize_summary_text.delete('1.0', tk.END)
+            self.prize_summary_text.config(state=tk.DISABLED)
+            if self.results_tree.get_children():
+                self.results_tree.delete(*self.results_tree.get_children())
+        
+        # 正常处理玩法切换
         self.draw_id_combo['values'] = []; self.draw_id_combo.set('')
         config = GAME_CONFIG[self.current_game_type.get()]
-        self.status_label.config(text=f"已选 {config['name']}，正获取期号...", foreground="blue")
+        if not is_manual_mode:  # 只有在非手工模式下才显示状态
+            self.status_label.config(text=f"已选 {config['name']}，正获取期号...", foreground="blue")
         self.refresh_draw_list_threaded()
 
     def _execute_in_thread(self, target_func, *args):
@@ -289,11 +351,22 @@ class LotteryCheckerApp:
         else: # loading, error, not_found
             message = "正在加载..." if status == 'loading' else result.get('message', "发生未知错误")
             self.status_label.config(text=message, foreground='red')
-            self.official_numbers_var.set("---"); self.draw_time_label.config(text="")
+            self.draw_time_label.config(text="")
             
-            ### [V3.7 修改] 错误状态下，输入框也设为只读
-            self.official_numbers_entry.config(state='readonly')
-            self.check_button.config(state=tk.DISABLED); self.import_button.config(state=tk.DISABLED); self.user_bets_text.config(state=tk.DISABLED)
+            if status == 'not_found':
+                ### [V3.8 修改] 期号不存在时，允许手工输入开奖号码进行兑奖
+                self.official_numbers_var.set("") # 清空内容，方便用户输入
+                self.official_numbers_entry.config(state='normal') # 允许编辑
+                self.user_bets_label.config(text=f"粘贴投注号码(每行一票)，或从文件导入:\n{config['placeholder']}")
+                # 启用对奖相关控件
+                self.check_button.config(state=tk.NORMAL)
+                self.import_button.config(state=tk.NORMAL)
+                self.user_bets_text.config(state=tk.NORMAL)
+            else:
+                ### [V3.7 修改] 其他错误状态下，输入框设为只读
+                self.official_numbers_var.set("---")
+                self.official_numbers_entry.config(state='readonly')
+                self.check_button.config(state=tk.DISABLED); self.import_button.config(state=tk.DISABLED); self.user_bets_text.config(state=tk.DISABLED)
 
     def check_prizes_threaded(self):
         ### [V3.7 修改] 对用户手动输入的数据进行校验
@@ -343,6 +416,28 @@ class LotteryCheckerApp:
             if item['status'] == '中奖': self.results_tree.insert('', tk.END, values=(item['line'], item['bet'], item['stakes'], item['status']), tags=('hit',))
         for item in invalid_bets: self.results_tree.insert('', tk.END, values=(item['line'], item['bet'], item['stakes'], item['status']), tags=('error',))
         if winning_line_count > 0: messagebox.showinfo("中奖提醒", f"恭喜您！\n\n发现 {winning_line_count} 张中奖彩票！")
+
+    def sort_bets(self):
+        """自动排序投注号码"""
+        content = self.user_bets_text.get('1.0', tk.END).strip()
+        if not content:
+            messagebox.showinfo("提示", "请先输入或导入投注号码。")
+            return
+        
+        # 按行分割，去除空行，排序
+        lines = [line.strip() for line in content.split('\n') if line.strip()]
+        if not lines:
+            messagebox.showinfo("提示", "没有找到有效的投注号码。")
+            return
+        
+        # 按投注号码字符串排序
+        sorted_lines = sorted(lines)
+        
+        # 更新文本框内容
+        self.user_bets_text.delete('1.0', tk.END)
+        self.user_bets_text.insert('1.0', '\n'.join(sorted_lines))
+        
+        messagebox.showinfo("排序完成", f"已对 {len(sorted_lines)} 条投注号码进行排序。")
 
     def import_from_file(self):
         if not (filepath := filedialog.askopenfilename(title="选择投注文件", filetypes=(("Text files", "*.txt"), ("All files", "*.*")))): return
