@@ -9,8 +9,7 @@ import time
 class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        # 版本号更新，注明核心修复逻辑
-        self.title("实时比分查看工具 (v31.0 - 权威状态修复版)")
+        self.title("实时比分查看工具 (v31.1 - 笔误修复版)")
         self.geometry("1270x600")
 
         self.API_MATCH_LIST = {
@@ -119,36 +118,14 @@ class ScoreApp(tk.Tk):
             except: return match_num, '时间错误'
         return match_num, ''
 
-    # ======================= v31.0 核心修复 =========================
     def get_status_info(self, match_details):
-        """
-        根据权威状态（顶层matchStatus）决定判断逻辑，建立防火墙。
-        """
-        # 优先1：检查顶层 'matchStatus' 是否为取消
-        if match_details.get('matchStatus') == -1:
-            return "取消", "cancelled"
-
-        # 优先2：检查顶层 'matchStatus' 是否为未开赛 (值0和1都代表未开始)
-        # 这是“防火墙”，如果满足此条件，则绝不查看 'footballLiveScore' 里的状态。
-        if match_details.get('matchStatus') in [0, 1]:
-            return "未开赛", "not_started"
-            
-        # 只有通过了上述检查（即比赛已开始或已结束），我们才查看详细信息
-        score_source = match_details.get('footballLiveScore', match_details)
-        status_enum = score_source.get('statusEnum')
-
-        if status_enum in [2, 4]: # 进行中
-            live_time = score_source.get('liveTime')
-            # 增加一个判断，避免显示-1'
-            return (f"{live_time}′" if live_time is not None and live_time > 0 else "进行中"), "in_progress"
-        elif status_enum == 3:  # 中场
-            return "中场", "in_progress"
-        elif status_enum in [8, 5, 6, 7]:  # 完赛
-            return "完", "finished"
-        
-        # 如果有其他未知的详细状态，则返回一个安全的默认值
+        if match_details.get('matchStatus') == -1: return "取消", "cancelled"
+        if match_details.get('matchStatus') in [0, 1]: return "未开赛", "not_started"
+        score_source = match_details.get('footballLiveScore', match_details); status_enum = score_source.get('statusEnum')
+        if status_enum in [2, 4]: live_time = score_source.get('liveTime'); return (f"{live_time}′" if live_time is not None and live_time > 0 else "进行中"), "in_progress"
+        elif status_enum == 3:  return "中场", "in_progress"
+        elif status_enum in [8, 5, 6, 7]:  return "完", "finished"
         return "未开赛", "not_started"
-    # ======================= 核心修复结束 =========================
 
     def _calculate_results(self, home_score, guest_score, let_ball, status_category, lottery_type, home_half_score=None, guest_half_score=None):
         if status_category == 'cancelled': return "取消"
@@ -174,7 +151,7 @@ class ScoreApp(tk.Tk):
     def update_ui_with_results(self, tree, data, original_issue):
         current_tab_info = self.get_current_tab_info()
         if not current_tab_info or tree != current_tab_info['tree'] or original_issue != current_tab_info['issue_var'].get(): self.schedule_refresh(); return
-        for i in tree.get_children(): tree.delete(i)
+        tree.delete(*tree.get_children())
         result_string_var, lottery_type = current_tab_info['result_string_var'], current_tab_info['type']
         if isinstance(data, str): messagebox.showinfo("提示", data) if "Traceback" not in data else messagebox.showerror("发生未知错误", data); self.update_status(f"获取 {original_issue} 数据失败"); result_string_var.set(" ")
         else:
@@ -211,30 +188,57 @@ class ScoreApp(tk.Tk):
         if current_tab_info and not current_tab_info['issue_var'].get():
             issue = self.get_initial_issue(current_tab_info['type']); issue and current_tab_info['issue_var'].set(issue)
         self.start_fetch_thread(is_manual=True)
+
+    # ======================= v31.1 核心修复 =========================
     def start_fetch_thread(self, is_manual=False):
-        self.cancel_timer(); current_tab_info = self.get_current_tab_info()
-        if not current_tab_info: return
-        lottery_type, issue_var, tree_widget = current_tab_info['type'], current_tab_info['issue_var'], current_tab_info['tree']; issue = issue_var.get()
-        if not issue: issue = self.get_initial_issue(lottery_type);
-        if not issue: messagebox.showwarning("提示", "无法获取期号/日期。"); self.schedule_refresh(); return
-        issue_var.get() or issue_var.set(issue)
-        if is_manual: self.update_status(f"正在获取 {issue} 的数据..."); [tree.delete(i) for i in tree_widget.get_children()]
+        self.cancel_timer()
+        current_tab_info = self.get_current_tab_info()
+        if not current_tab_info:
+            return
+        
+        lottery_type = current_tab_info['type']
+        issue_var = current_tab_info['issue_var']
+        tree_widget = current_tab_info['tree']
+        issue = issue_var.get()
+        
+        if not issue:
+            issue = self.get_initial_issue(lottery_type)
+            if not issue:
+                messagebox.showwarning("提示", "无法获取期号/日期。")
+                self.schedule_refresh()
+                return
+            issue_var.set(issue)
+
+        if is_manual:
+            self.update_status(f"正在获取 {issue} 的数据...")
+            # 使用正确的变量名 tree_widget，并用更高效的方式清空
+            tree_widget.delete(*tree_widget.get_children())
+            
         threading.Thread(target=self.fetch_and_display, args=(lottery_type, issue, tree_widget, is_manual), daemon=True).start()
+    # ======================= 核心修复结束 =========================
+
     def fetch_and_display(self, lottery_type, issue, tree_widget, is_manual):
-        not is_manual and self.update_status(f"自动刷新 {issue} 数据中..."); result_data = self.fetch_all_data(lottery_type, issue); self.after(0, self.update_ui_with_results, tree_widget, result_data, issue)
+        if not is_manual:
+            self.update_status(f"自动刷新 {issue} 数据中...")
+        result_data = self.fetch_all_data(lottery_type, issue)
+        self.after(0, self.update_ui_with_results, tree_widget, result_data, issue)
+
     def update_status(self, message): self.after(0, self.status_bar.config, {'text': message})
     def get_current_issue_from_api(self, lottery_type):
         api_map = {"sfc": "rj", "jqs": "jqc", "bqc": "bqc"}
         if lottery_type in api_map:
             try:
-                data = requests.get(self.API_BASE_DEGREE_LIST.format(api_map[lottery_type]), timeout=10).json()
+                url = self.API_BASE_DEGREE_LIST.format(api_map[lottery_type])
+                data = requests.get(url, timeout=10).json()
                 if data.get('code') == 200:
                     degree_list = data.get('data', {}).get('degreeList', [])
-                    if degree_list: return str(next((i.get('degree') for i in degree_list if i.get('degreeStatus') == 1), degree_list[0].get('degree')))
-            except: self.update_status("网络错误，无法获取最新期号")
+                    if degree_list:
+                        # 优先找'当前期'，如果找不到，就用列表里的第一个
+                        return str(next((i.get('degree') for i in degree_list if i.get('degreeStatus') == 1), degree_list[0].get('degree')))
+            except Exception as e:
+                self.update_status(f"网络错误，无法获取最新期号: {e}")
         return None
 
 if __name__ == "__main__":
     app = ScoreApp()
     app.mainloop()
-
