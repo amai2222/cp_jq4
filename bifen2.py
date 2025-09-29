@@ -10,8 +10,9 @@ import json
 class ScoreApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("实时比分查看工具 (v39.0 - 新增赔率列)")
-        self.geometry("1530x600") # 再次加宽以容纳3个赔率列
+        # 更新版本号
+        self.title("实时比分查看工具 (v44.1 - 修正赛事解析)")
+        self.geometry("1620x600") 
         self.match_data_map = {}
         self.API_MATCH_LIST = {"jczq": "https://sports.163.com/caipiao/api/web/match/list/jingcai/matchList/1?days={}", "bjdc": "https://sports.163.com/caipiao/api/web/match/list/beijing/matchList/1?days={}", "sfc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/rj?degree={}", "jqs": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/jqc?degree={}", "bqc": "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/bqc?degree={}"}
         self.API_BASE_DEGREE_LIST = "https://sports.163.com/caipiao/api/web/match/list/zucai/matchList/{}" 
@@ -40,21 +41,22 @@ class ScoreApp(tk.Tk):
         result_string_var = tk.StringVar(); result_string_label = ttk.Label(control_frame, textvariable=result_string_var, font=('Helvetica', 12, 'bold'), foreground='red'); result_string_label.pack(side=tk.LEFT, padx=(20, 0)); result_string_label.config(cursor="hand2"); result_string_label.bind("<Button-1>", self.copy_to_clipboard)
         tree_frame = ttk.Frame(frame); tree_frame.pack(fill=tk.BOTH, expand=True, pady=10)
         
-        # ======================= v39.0 界面升级：增加 '正', '平', '负' 三列 =========================
-        columns = ('match_num', 'match_time', 'sequence', 'home_team', 'vs', 'away_team', 'half_score', 'score', 'status', 'result', 'home_sp', 'draw_sp', 'away_sp', 'path')
+        columns = ('match_num', 'match_time', 'sequence', 'league', 'home_team', 'vs', 'away_team', 'half_score', 'score', 'status', 'result', 'home_sp', 'draw_sp', 'away_sp', 'path')
         tree = ttk.Treeview(tree_frame, columns=columns, show='headings'); scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview); tree.configure(yscrollcommand=scrollbar.set); scrollbar.pack(side=tk.RIGHT, fill=tk.Y); tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         tree.bind("<Double-1>", self.on_match_double_click)
         
-        headings = {'match_num': '场次', 'match_time': '时间', 'sequence': '次序', 'home_team': '主队', 'vs': '', 'away_team': '客队', 'half_score': '半场', 'score': '比分', 'status': '状态', 'result': '赛果', 'home_sp': '正', 'draw_sp': '平', 'away_sp': '负', 'path': '正反路'}
-        widths = {'match_num': 80, 'match_time': 110, 'sequence': 50, 'home_team': 150, 'vs': 30, 'away_team': 150, 'half_score': 80, 'score': 100, 'status': 80, 'result': 120, 'home_sp': 60, 'draw_sp': 60, 'away_sp': 60, 'path': 60}
-        anchors = {'match_num': tk.CENTER, 'match_time': tk.CENTER, 'sequence': tk.CENTER, 'home_team': tk.E, 'vs': tk.CENTER, 'away_team': tk.W, 'half_score': tk.CENTER, 'score': tk.CENTER, 'status': tk.CENTER, 'result': tk.CENTER, 'home_sp': tk.CENTER, 'draw_sp': tk.CENTER, 'away_sp': tk.CENTER, 'path': tk.CENTER}
+        headings = {'match_num': '场次', 'match_time': '时间', 'sequence': '次序', 'league': '赛事', 'home_team': '主队', 'vs': '', 'away_team': '客队', 'half_score': '半场', 'score': '比分', 'status': '状态', 'result': '赛果', 'home_sp': '正', 'draw_sp': '平', 'away_sp': '负', 'path': '正反路'}
+        widths = {'match_num': 80, 'match_time': 110, 'sequence': 50, 'league': 90, 'home_team': 150, 'vs': 30, 'away_team': 150, 'half_score': 80, 'score': 100, 'status': 80, 'result': 120, 'home_sp': 60, 'draw_sp': 60, 'away_sp': 60, 'path': 60}
+        anchors = {'match_num': tk.CENTER, 'match_time': tk.CENTER, 'sequence': tk.CENTER, 'league': tk.CENTER, 'home_team': tk.E, 'vs': tk.CENTER, 'away_team': tk.W, 'half_score': tk.CENTER, 'score': tk.CENTER, 'status': tk.CENTER, 'result': tk.CENTER, 'home_sp': tk.CENTER, 'draw_sp': tk.CENTER, 'away_sp': tk.CENTER, 'path': tk.CENTER}
         
-        for col in columns:
-            tree.heading(col, text=headings[col])
-            tree.column(col, width=widths[col], anchor=anchors[col])
-        # ======================= 界面升级结束 =========================
+        for col in columns: tree.heading(col, text=headings[col]); tree.column(col, width=widths[col], anchor=anchors[col])
         
-        tree.tag_configure('in_progress', foreground='red'); tree.tag_configure('finished', foreground='black'); tree.tag_configure('not_started', foreground='gray'); tree.tag_configure('cancelled', foreground='blue')
+        tree.tag_configure('in_progress', foreground='green') 
+        tree.tag_configure('finished', foreground='black')
+        tree.tag_configure('not_started', foreground='gray')
+        tree.tag_configure('cancelled', foreground='blue')
+        tree.tag_configure('path_alert', foreground='red')
+
         self.tabs_info[name].update({'issue_var': issue_var, 'tree': tree, 'auto_refresh_var': auto_refresh_var, 'result_string_var': result_string_var})
         return frame
         
@@ -78,32 +80,39 @@ class ScoreApp(tk.Tk):
             processed_data = []
             for i, match in enumerate(matches, 1):
                 live_data = live_data_map.get(str(match.get('matchInfoId')), {}); final_match_data = {**match, **live_data}; status_str, status_category = self.get_status_info(final_match_data)
+                
+                # ======================= v44.1 修正：正确解析赛事名称 ========================
+                league_name = final_match_data.get('leagueMatch', {}).get('leagueName', 'N/A')
+                
                 match_num, match_time_display = self._get_basic_info(final_match_data, lottery_type, i, issue); home_team = final_match_data.get('homeTeam', {}).get('teamName', 'N/A'); away_team = final_match_data.get('guestTeam', {}).get('teamName', 'N/A')
                 score_source = final_match_data.get('footballLiveScore', final_match_data); home_score, guest_score, home_half, guest_half = score_source.get('homeScore'), score_source.get('guestScore'), score_source.get('homeHalfScore'), score_source.get('guestHalfScore')
                 score_str = "- : -" if status_category == 'cancelled' else f"{home_score} - {guest_score}" if home_score is not None else '- : -'; half_time_str = "" if status_category == 'cancelled' else f"{home_half} - {guest_half}" if home_half is not None else ''
+
                 let_ball = '0';
                 if final_match_data.get('playMap'):
-                    if lottery_type == 'jczq': let_ball = str(final_match_data.get('playMap', {}).get('HDA', {}).get('concede', '0'))
+                    if lottery_type == 'jczq': let_ball = str(final_match_data.get('playMap', {}).get('HHDA', {}).get('concede', '0'))
                     elif lottery_type == 'bjdc': let_ball = str(final_match_data.get('playMap', {}).get('BJ_HDA', {}).get('concede', '0'))
-                elif final_match_data.get('playItemList'): hda_item = next((item for item in final_match_data['playItemList'] if item.get('playCode') in ['HDA', 'HHDA'] and lottery_type == 'jczq'), None); hda_item and (let_ball := str(hda_item.get('concede', '0')))
                 
                 result_str = self._calculate_results(home_score, guest_score, let_ball, status_category, lottery_type, home_half, guest_half);
-                
-                # =================== v39.0 核心逻辑：提取赔率 & 计算正反路 ==================
-                hda_odds = self._get_hda_odds(final_match_data)
-                home_sp = hda_odds.get('主胜', '-')
-                draw_sp = hda_odds.get('平', '-')
-                away_sp = hda_odds.get('客胜', '-')
-                path_str = self._calculate_path(home_score, guest_score, status_category, hda_odds)
-                # ===============================================================
+                hda_odds = self._get_hda_odds(final_match_data); home_sp, draw_sp, away_sp = hda_odds.get('主胜', '-'), hda_odds.get('平', '-'), hda_odds.get('客胜', '-'); path_str = self._calculate_path(home_score, guest_score, status_category, hda_odds)
 
                 display_handicap = ""
                 if lottery_type in ['jczq', 'bjdc'] and let_ball and let_ball != '0' and let_ball != '0.0':
                     try: handicap_val = int(float(let_ball)); display_handicap = f"({handicap_val:+d})"
                     except (ValueError, TypeError): pass
                 home_team_display = f"{home_team} {display_handicap}".strip()
-                row_values = (match_num, match_time_display, str(match.get('sort', i)), home_team_display, 'vs', away_team, half_time_str, score_str, status_str, result_str, home_sp, draw_sp, away_sp, path_str)
-                processed_data.append({'values': row_values, 'tag': status_category, 'full_data': final_match_data})
+                
+                row_values = (match_num, match_time_display, str(match.get('sort', i)), league_name, home_team_display, 'vs', away_team, half_time_str, score_str, status_str, result_str, home_sp, draw_sp, away_sp, path_str)
+                
+                current_tags = []
+                is_path_alert = path_str in ["反路", "平"]
+
+                if is_path_alert:
+                    current_tags.append('path_alert')
+                else:
+                    current_tags.append(status_category)
+
+                processed_data.append({'values': row_values, 'tags': tuple(current_tags), 'full_data': final_match_data, 'status_category': status_category})
             return processed_data
         except Exception: return f"获取或处理数据时发生错误: {traceback.format_exc()}"
 
@@ -117,16 +126,21 @@ class ScoreApp(tk.Tk):
             self.update_status(f"获取 {original_issue} 数据失败"); result_string_var.set(" ")
         else:
             for row_data in data:
-                item_id = tree.insert('', 'end', values=row_data['values'], tags=(row_data['tag'],)); self.match_data_map[item_id] = row_data['full_data']
+                item_id = tree.insert('', 'end', values=row_data['values'], tags=row_data['tags'])
+                self.match_data_map[item_id] = row_data['full_data']
             self.update_status(f"{original_issue} 数据刷新成功！")
-            if lottery_type in ['jqs', 'bqc', 'sfc']: final_result_string = "".join([str(row['values'][9]) if row['tag'] == 'finished' else '*' for row in data]); result_string_var.set(final_result_string or " ")
-            else: result_string_var.set(" ")
+            
+            if lottery_type in ['jqs', 'bqc', 'sfc']:
+                final_result_string = "".join([str(row['values'][10]) if row.get('status_category') == 'finished' else '*' for row in data])
+                result_string_var.set(final_result_string or " ")
+            else:
+                result_string_var.set(" ")
+
             if lottery_type in ['jczq', 'bjdc']: tree.yview_moveto(1.0)
         self.schedule_refresh()
 
     def on_match_double_click(self, event):
-        item_id = event.widget.focus()
-        if item_id: (lambda data: self.show_odds_popup(data) if data else messagebox.showinfo("提示", "未找到该比赛的详细数据。"))(self.match_data_map.get(item_id))
+        item_id = event.widget.focus(); item_id and (lambda data: self.show_odds_popup(data) if data else messagebox.showinfo("提示", "未找到该比赛的详细数据。"))(self.match_data_map.get(item_id))
 
     def show_debug_window(self, data, parent_popup):
         debug_popup = tk.Toplevel(self); debug_popup.title("原始数据 (JSON)"); debug_popup.geometry("600x600"); debug_popup.transient(parent_popup); debug_popup.grab_set()
@@ -143,40 +157,44 @@ class ScoreApp(tk.Tk):
         main_frame = ttk.Frame(popup, padding=10); main_frame.pack(fill=tk.BOTH, expand=True)
         content_frame = ttk.Frame(main_frame); content_frame.pack(fill=tk.X, expand=True)
         has_odds_displayed = False
-        name_map = {"Home": "主胜", "Draw": "平", "Away": "客胜", "W": "主胜", "D": "平", "L": "客胜"}
-        play_map = match_data.get('playMap', {})
-        if play_map:
-            hda_data = play_map.get('HDA')
-            if hda_data and (hda_data.get('options') or hda_data.get('playItemList')):
+        play_map = match_data.get('playMap', {}); hda_data_node = play_map.get('HDA') or play_map.get('BJ_HDA')
+        if hda_data_node:
+            odds_list = hda_data_node.get('playItemList') or hda_data_node.get('options')
+            if odds_list:
                 has_odds_displayed = True
-                frame = ttk.LabelFrame(content_frame, text="胜平负 (在售)", padding=10)
-                frame.pack(fill=tk.X, pady=5)
-                options = hda_data.get('options') or hda_data.get('playItemList')
-                for opt in options:
-                    name = name_map.get(opt.get('name') or opt.get('playItemCode'), "未知")
-                    sp = opt.get('sp', opt.get('odds', 'N/A'))
-                    is_result = hda_data.get('resultPlayItemId') == opt.get('playItemId')
-                    ttk.Label(frame, text=f"{name}: {sp}", width=15, foreground='red' if is_result else 'black').pack(side=tk.LEFT, padx=5)
+                frame = ttk.LabelFrame(content_frame, text="胜平负 (在售)", padding=10); frame.pack(fill=tk.X, pady=5)
+                name_map = {"Home": "主胜", "Draw": "平", "Away": "客胜"}; parsed_odds = []
+                for item in odds_list:
+                    name = item.get('playItemName'); sp = item.get('odds')
+                    if name is None: name = name_map.get(item.get('name'))
+                    if sp is None: sp = item.get('sp')
+                    if name in ["主胜", "平", "客胜"]: parsed_odds.append({'name': name, 'sp': sp})
+                for a_odd in sorted(parsed_odds, key=lambda x: ["主胜", "平", "客胜"].index(x['name'])):
+                    ttk.Label(frame, text=f"{a_odd['name']}: {a_odd['sp']}", width=15).pack(side=tk.LEFT, padx=5)
         if not has_odds_displayed:
-            play_item_list = match_data.get('playItemList', [])
-            if play_item_list:
-                spf_items = [i for i in play_item_list if i.get('playName') == '胜负']
-                if spf_items:
-                    has_odds_displayed = True
-                    frame = ttk.LabelFrame(content_frame, text="胜平负 (最终)", padding=10)
-                    frame.pack(fill=tk.X, pady=5)
-                    for item in sorted(spf_items, key=lambda x: ['主胜', '平', '客胜'].index(x.get('playItemName', '')) if x.get('playItemName') in ['主胜', '平', '客胜'] else 99):
-                        is_result = item.get('result') == 1
-                        ttk.Label(frame, text=f"{item.get('playItemName')}: {item.get('odds', 'N/A')}", width=15, foreground='red' if is_result else 'black').pack(side=tk.LEFT, padx=5)
+            spf_items = [i for i in match_data.get('playItemList', []) if i.get('playName') == '胜负']
+            if spf_items:
+                has_odds_displayed = True
+                frame = ttk.LabelFrame(content_frame, text="胜平负 (最终)", padding=10); frame.pack(fill=tk.X, pady=5)
+                for item in sorted(spf_items, key=lambda x: ['主胜', '平', '客胜'].index(x.get('playItemName', '')) if x.get('playItemName') in ['主胜', '平', '客胜'] else 99):
+                    is_result = item.get('result') == 1
+                    ttk.Label(frame, text=f"{item.get('playItemName')}: {item.get('odds', 'N/A')}", width=15, foreground='red' if is_result else 'black').pack(side=tk.LEFT, padx=5)
         if not has_odds_displayed: ttk.Label(content_frame, text="无“胜平负”赔率数据。").pack(padx=20, pady=10)
         separator = ttk.Separator(main_frame, orient='horizontal'); separator.pack(fill='x', pady=10)
-        button_frame = ttk.Frame(main_frame)
-        button_frame.pack(fill=tk.X, expand=True)
+        button_frame = ttk.Frame(main_frame); button_frame.pack(fill=tk.X, expand=True)
         ttk.Button(button_frame, text="显示原始数据", command=lambda: self.show_debug_window(match_data, popup)).pack(side=tk.LEFT, padx=(5,5))
         ttk.Button(button_frame, text="关闭", command=popup.destroy).pack(side=tk.RIGHT, padx=(5,5))
     
     def _get_basic_info(self, match_data, lottery_type, index, issue):
-        if lottery_type == 'bjdc': jc_num_val = match_data.get('jcNum'); match_num = f"北单{int(jc_num_val) - 11}" if jc_num_val else "无北单号"
+        if lottery_type == 'bjdc':
+            jc_num_val = match_data.get('jcNum')
+            if jc_num_val:
+                numeric_part = "".join(filter(str.isdigit, str(jc_num_val)))
+                if numeric_part:
+                    try: calculated_num = int(numeric_part) - 11; match_num = f"北单{calculated_num}"
+                    except ValueError: match_num = str(jc_num_val)
+                else: match_num = str(jc_num_val)
+            else: match_num = "无北单号"
         else: match_num = str(match_data.get('matchNum') or match_data.get('jcNum') or index)
         match_time_full = match_data.get('matchTime', ''); time_format = '%m-%d %H:%M'
         if isinstance(match_time_full, str) and match_time_full and lottery_type in ['jczq', 'bjdc']:
@@ -196,47 +214,37 @@ class ScoreApp(tk.Tk):
         elif status_enum in [8, 5, 6, 7]:  return "完", "finished"
         return "未开赛", "not_started"
 
-    # ======================= v39.0 代码重构：提取公共的赔率获取函数 =====================
     def _get_hda_odds(self, match_data):
-        """提取非让球胜平负(HDA)赔率，返回一个字典。"""
-        odds_dict = {}
-        # 优先从在售赔率(playMap)中获取
-        odds_options = match_data.get('playMap', {}).get('HDA', {}).get('options', [])
-        name_map = {"Home": "主胜", "Draw": "平", "Away": "客胜"}
-        for opt in odds_options:
-            name = name_map.get(opt.get('name'))
-            if name: odds_dict[name] = opt.get('sp', '-')
-        
-        # 如果在售赔率没有，尝试从最终赔率列表(playItemList)中获取
+        odds_dict = {}; play_map = match_data.get('playMap', {}); hda_data_node = play_map.get('HDA') or play_map.get('BJ_HDA')
+        if hda_data_node:
+            odds_list = hda_data_node.get('playItemList') or hda_data_node.get('options')
+            if odds_list:
+                name_map = {"Home": "主胜", "Draw": "平", "Away": "客胜"}
+                for item in odds_list:
+                    name = item.get('playItemName'); sp = item.get('odds')
+                    if name is None: name = name_map.get(item.get('name'))
+                    if sp is None: sp = item.get('sp')
+                    if name in ["主胜", "平", "客胜"]: odds_dict[name] = sp
         if not odds_dict:
             spf_items = [i for i in match_data.get('playItemList', []) if i.get('playName') == '胜负']
-            name_map_final = {"主胜": "主胜", "平": "平", "客胜": "客胜"}
             for item in spf_items:
-                name = name_map_final.get(item.get('playItemName'))
-                if name: odds_dict[name] = item.get('odds', '-')
-
+                name = item.get('playItemName')
+                if name in ["主胜", "平", "客胜"]: odds_dict[name] = item.get('odds', '-')
         return odds_dict
 
-    # ======================= v39.0 功能升级：计算正反路的函数(已简化) =========================
     def _calculate_path(self, home_score, guest_score, status_category, odds_dict):
         if status_category not in ['in_progress', 'finished']: return ""
         try: home_s, guest_s = int(home_score), int(guest_score)
         except (ValueError, TypeError): return ""
-
         if home_s > guest_s: actual_result = "主胜"
         elif home_s < guest_s: actual_result = "客胜"
-        else: return "平" # 平局直接返回
-
+        else: return "平"
         if not odds_dict: return ""
-
-        # 将赔率转为浮点数进行比较，处理非数字的情况
-        float_odds = {}
+        float_odds = {};
         for name, sp in odds_dict.items():
             try: float_odds[name] = float(sp)
             except (ValueError, TypeError): continue
-
         if not float_odds: return ""
-
         favorite_result = min(float_odds, key=float_odds.get)
         return "正路" if actual_result == favorite_result else "反路"
 
@@ -330,4 +338,3 @@ class ScoreApp(tk.Tk):
 if __name__ == "__main__":
     app = ScoreApp()
     app.mainloop()
-
